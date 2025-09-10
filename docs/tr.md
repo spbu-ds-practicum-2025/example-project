@@ -49,32 +49,11 @@
 3. Система проводит операцию в сторонней платежной системе и в случае успеха пополняет баланс пользователя
 6. Пользователь видит обновлённый баланс в приложении.
 
-```mermaid
-usecaseDiagram
-  actor User
-  actor "BankCardAdapter" as Adapter
-  actor "Платёжный сервис" as PaymentService
-
-  User --> (Пополнение счёта)
-  (Пополнение счёта) <-- Adapter
-  Adapter --> (Платёжная операция)
-  PaymentService --> (Платёжная операция)
-  User --> (Просмотр баланса)
-```
-
 ### Сценарий: перевод денег
 1. Пользователь A инициирует перевод 100₽ пользователю B.  
 2. Система проверяет баланс A.  
 3. Если средств достаточно — выполняется транзакция, увеличивающая баланс B и уменьшающая баланс А.  
 4. Пользователь B видит пополнение.  
-
-```mermaid
-usecaseDiagram
-  actor User
-
-  User --> (Перевод средств)
-  User --> (Просмотр баланса)
-```
 
 ### Сценарий: просмотр истории переводов
 1. Пользователь запрашивает историю переводов через клиентское приложение.
@@ -91,6 +70,38 @@ usecaseDiagram
 5. Analytics — сервис, предоставляющий аналитические данные
 6. Analytics DB — база данных сервиса Analytics, аналитическая
 7. Message Broker — брокер сообщений, обеспечивающий асинхронную передачу данных из Bank в Analytics
+
+```mermaid
+graph TD
+  subgraph Client
+    UserApp[Клиентское приложение]
+  end
+  subgraph Gateway
+    APIGateway[API Gateway]
+  end
+  subgraph Services
+    Bank[Bank]
+    Analytics[Analytics]
+    BankCardAdapter[BankCardAdapter]
+    MessageBroker[Message Broker]
+  end
+  subgraph Databases
+    BankDB[(Bank DB)]
+    AnalyticsDB[(Analytics DB)]
+  end
+  subgraph External
+    PaymentService[Платёжный сервис]
+  end
+
+  UserApp-->|REST/HTTP|APIGateway
+  APIGateway-->|gRPC/HTTP|Bank
+  APIGateway-->|gRPC/HTTP|BankCardAdapter
+  Bank-->|SQL|BankDB
+  Bank-->|Events|MessageBroker
+  MessageBroker-->|Events|Analytics
+  Analytics-->|SQL|AnalyticsDB
+  BankCardAdapter-->|API|PaymentService
+```
 
 ## 7. Технические сценарии
 
