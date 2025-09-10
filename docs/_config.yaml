@@ -1,1 +1,7 @@
-theme: jekyll-theme-minimal
+title: Техническое решение
+remote_theme: just-the-docs/just-the-docs
+lang: ru
+search_enabled: true
+aux_links:
+  "Репозиторий на GitHub":
+    - "https://github.com/spbu-ds-practicum-2025/example-project"
