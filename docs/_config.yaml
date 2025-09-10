@@ -5,3 +5,6 @@ search_enabled: true
 aux_links:
   "Репозиторий на GitHub":
     - "https://github.com/spbu-ds-practicum-2025/example-project"
+just_the_docs:
+  includes:
+    head_custom: head_custom.html
