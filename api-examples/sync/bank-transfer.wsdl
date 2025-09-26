@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:tns="http://api.bank.example.com/transfer"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="http://api.bank.example.com/transfer"
+             elementFormDefault="qualified">
+
+  <!-- Types Definition -->
+  <types>
+    <xsd:schema targetNamespace="http://api.bank.example.com/transfer"
+                elementFormDefault="qualified">
+      
+      <!-- UUID Type Definition -->
+      <xsd:simpleType name="UUID">
+        <xsd:restriction base="xsd:string">
+          <xsd:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+
+      <!-- Currency Type Definition -->
+      <xsd:simpleType name="CurrencyCode">
+        <xsd:restriction base="xsd:string">
+          <xsd:pattern value="[A-Z]{3}"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+
+      <!-- Amount Complex Type -->
+      <xsd:complexType name="Amount">
+        <xsd:sequence>
+          <xsd:element name="value" type="xsd:int" minOccurs="1"/>
+          <xsd:element name="currency" type="tns:CurrencyCode" minOccurs="1"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <!-- Idempotency Key Header -->
+      <xsd:element name="IdempotencyKey">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="key" type="tns:UUID" minOccurs="1"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Transfer Request -->
+      <xsd:element name="TransferRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="source" type="tns:UUID" minOccurs="1"/>
+            <xsd:element name="destination" type="tns:UUID" minOccurs="1"/>
+            <xsd:element name="amount" type="tns:Amount" minOccurs="1"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Transfer Response -->
+      <xsd:element name="TransferResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="success" type="xsd:boolean" minOccurs="1"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- Base Error Type -->
+      <xsd:complexType name="BaseError">
+        <xsd:sequence>
+          <xsd:element name="id" type="tns:UUID" minOccurs="1"/>
+          <xsd:element name="code" type="xsd:string" minOccurs="1"/>
+          <xsd:element name="message" type="xsd:string" minOccurs="1"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <!-- Validation Error Codes -->
+      <xsd:simpleType name="ValidationErrorCode">
+        <xsd:restriction base="xsd:string">
+          <xsd:enumeration value="INVALID_UUID_FORMAT"/>
+          <xsd:enumeration value="MISSING_REQUIRED_FIELD"/>
+          <xsd:enumeration value="INVALID_CURRENCY_CODE"/>
+          <xsd:enumeration value="INVALID_AMOUNT_VALUE"/>
+          <xsd:enumeration value="INVALID_REQUEST_FORMAT"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+
+      <!-- Application Error Codes -->
+      <xsd:simpleType name="ApplicationErrorCode">
+        <xsd:restriction base="xsd:string">
+          <xsd:enumeration value="INSUFFICIENT_FUNDS"/>
+          <xsd:enumeration value="ACCOUNT_NOT_FOUND"/>
+          <xsd:enumeration value="ACCOUNT_FROZEN"/>
+          <xsd:enumeration value="TRANSFER_LIMIT_EXCEEDED"/>
+          <xsd:enumeration value="SAME_ACCOUNT_TRANSFER"/>
+          <xsd:enumeration value="SERVICE_UNAVAILABLE"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+
+      <!-- Validation Error -->
+      <xsd:complexType name="ValidationError">
+        <xsd:complexContent>
+          <xsd:extension base="tns:BaseError">
+            <xsd:sequence>
+              <xsd:element name="field" type="xsd:string" minOccurs="0"/>
+            </xsd:sequence>
+          </xsd:extension>
+        </xsd:complexContent>
+      </xsd:complexType>
+
+      <!-- Application Error -->
+      <xsd:complexType name="ApplicationError">
+        <xsd:complexContent>
+          <xsd:extension base="tns:BaseError">
+            <xsd:sequence>
+              <xsd:element name="details" minOccurs="0">
+                <xsd:complexType>
+                  <xsd:sequence>
+                    <xsd:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+                  </xsd:sequence>
+                </xsd:complexType>
+              </xsd:element>
+            </xsd:sequence>
+          </xsd:extension>
+        </xsd:complexContent>
+      </xsd:complexType>
+
+      <!-- Fault Elements -->
+      <xsd:element name="ValidationFault" type="tns:ValidationError"/>
+      <xsd:element name="ApplicationFault" type="tns:ApplicationError"/>
+
+    </xsd:schema>
+  </types>
+
+  <!-- Messages -->
+  <message name="IdempotencyHeader">
+    <part name="idempotency" element="tns:IdempotencyKey"/>
+  </message>
+
+  <message name="TransferRequestMessage">
+    <part name="parameters" element="tns:TransferRequest"/>
+  </message>
+
+  <message name="TransferResponseMessage">
+    <part name="parameters" element="tns:TransferResponse"/>
+  </message>
+
+  <message name="ValidationFaultMessage">
+    <part name="fault" element="tns:ValidationFault"/>
+  </message>
+
+  <message name="ApplicationFaultMessage">
+    <part name="fault" element="tns:ApplicationFault"/>
+  </message>
+
+  <!-- Port Type -->
+  <portType name="BankTransferPortType">
+    <operation name="Transfer">
+      <documentation>Transfer money between accounts</documentation>
+      <input message="tns:TransferRequestMessage"/>
+      <output message="tns:TransferResponseMessage"/>
+      <fault name="ValidationFault" message="tns:ValidationFaultMessage"/>
+      <fault name="ApplicationFault" message="tns:ApplicationFaultMessage"/>
+    </operation>
+  </portType>
+
+  <!-- Binding -->
+  <binding name="BankTransferSoapBinding" type="tns:BankTransferPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <operation name="Transfer">
+      <soap:operation soapAction="http://api.bank.example.com/transfer/Transfer"/>
+      <input>
+        <soap:body use="literal"/>
+        <soap:header message="tns:IdempotencyHeader" part="idempotency" use="literal"/>
+      </input>
+      <output>
+        <soap:body use="literal"/>
+      </output>
+      <fault name="ValidationFault">
+        <soap:fault name="ValidationFault" use="literal"/>
+      </fault>
+      <fault name="ApplicationFault">
+        <soap:fault name="ApplicationFault" use="literal"/>
+      </fault>
+    </operation>
+  </binding>
+
+  <!-- Service -->
+  <service name="BankTransferService">
+    <documentation>Bank Transfer SOAP Web Service</documentation>
+    <port name="BankTransferSoapPort" binding="tns:BankTransferSoapBinding">
+      <soap:address location="https://api.bank.example.com/soap/transfer"/>
+    </port>
+  </service>
+
+</definitions>

@@ -1,0 +1,122 @@
+asyncapi: 3.0.0
+info:
+  title: Account Transfer API
+  version: 1.0.0
+  description: |
+    AsyncAPI specification for account transfer events transmitted through Kafka.
+    This API describes transfer operations between accounts with status tracking.
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+defaultContentType: application/json
+
+servers:
+  kafka:
+    host: localhost:9092
+    protocol: kafka
+    description: Local Kafka broker
+
+channels:
+  account_operations:
+    address: account_operations
+    messages:
+      transferEvent:
+        $ref: '#/components/messages/TransferEvent'
+    description: Channel for account transfer events
+
+operations:
+  publishTransfer:
+    action: send
+    channel:
+      $ref: '#/channels/account_operations'
+    summary: Publish transfer event
+    description: Publishes a transfer event to the account_operations topic
+    messages:
+      - $ref: '#/channels/account_operations/messages/transferEvent'
+
+  subscribeTransfer:
+    action: receive
+    channel:
+      $ref: '#/channels/account_operations'
+    summary: Subscribe to transfer events
+    description: Subscribe to receive transfer events from the account_operations topic
+    messages:
+      - $ref: '#/channels/account_operations/messages/transferEvent'
+
+components:
+  messages:
+    TransferEvent:
+      name: TransferEvent
+      title: Transfer Event
+      summary: Event representing a transfer between accounts
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/TransferPayload'
+
+  schemas:
+    TransferPayload:
+      type: object
+      required:
+        - eventId
+        - eventTime
+        - type
+        - sourceAccount
+        - destinationAccount
+        - amount
+        - status
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Unique identifier for the event
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        eventTime:
+          type: string
+          format: date-time
+          description: Timestamp when the transfer occurred (ISO 8601 format)
+          example: "2025-09-26T14:30:00.000Z"
+        type:
+          type: string
+          enum:
+            - "TRANSFER"
+          description: Type of operation
+          example: "TRANSFER"
+        sourceAccount:
+          type: string
+          format: uuid
+          description: ID of the source account (money flows from this account)
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        destinationAccount:
+          type: string
+          format: uuid
+          description: ID of the destination account (money flows to this account)
+          example: "987fcdeb-51a2-43e1-b789-123456789abc"
+        amount:
+          type: number
+          format: decimal
+          minimum: 1
+          description: Amount of money to transfer
+          example: 250.75
+        status:
+          type: string
+          enum:
+            - "SUCCESS"
+            - "FAILURE"
+          description: Status of the transfer operation
+          example: "SUCCESS"
+        error:
+          type: string
+          description: Error message in case of failure (only present when status is FAILURE)
+          example: "Insufficient funds"
+      example:
+        eventId: "550e8400-e29b-41d4-a716-446655440000"
+        eventTime: "2025-09-26T14:30:00.000Z"
+        type: "TRANSFER"
+        sourceAccount: "123e4567-e89b-12d3-a456-426614174000"
+        destinationAccount: "987fcdeb-51a2-43e1-b789-123456789abc"
+        amount: 250.75
+        status: "SUCCESS"
