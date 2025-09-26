@@ -1,0 +1,106 @@
+asyncapi: 3.0.0
+info:
+  title: Real-time Chat API
+  version: 1.0.0
+  description: |
+    AsyncAPI specification for a real-time chat system using WebSocket protocol.
+    This API enables users to send messages and receive messages
+    in real-time through bidirectional communication.
+  contact:
+    name: Chat API Support
+    email: chat-support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+defaultContentType: application/json
+
+servers:
+  chat-server:
+    host: localhost:8080
+    protocol: ws
+    pathname: /chat
+    description: WebSocket chat server for real-time messaging
+
+channels:
+  chat_messages:
+    address: chat.messages
+    messages:
+      chatMessage:
+        $ref: '#/components/messages/ChatMessage'
+    description: Channel for sending and receiving chat messages
+
+operations:
+  sendMessage:
+    action: send
+    channel:
+      $ref: '#/channels/chat_messages'
+    summary: Send chat message
+    description: Send a message to the chat room
+    messages:
+      - $ref: '#/channels/chat_messages/messages/chatMessage'
+
+  receiveMessages:
+    action: receive
+    channel:
+      $ref: '#/channels/chat_messages'
+    summary: Receive chat messages
+    description: Subscribe to receive messages from the chat room
+    messages:
+      - $ref: '#/channels/chat_messages/messages/chatMessage'
+
+components:
+  messages:
+    ChatMessage:
+      name: ChatMessage
+      title: Chat Message
+      summary: A chat message sent by a user
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChatMessagePayload'
+
+  schemas:
+    ChatMessagePayload:
+      type: object
+      properties:
+        messageId:
+          type: string
+          format: uuid
+          description: Unique identifier for the message
+        roomId:
+          type: string
+          description: Chat room identifier
+        userId:
+          type: string
+          description: User who sent the message
+        username:
+          type: string
+          description: Display name of the user
+        content:
+          type: string
+          description: Message content
+          maxLength: 1000
+        timestamp:
+          type: string
+          format: date-time
+          description: When the message was sent
+        messageType:
+          type: string
+          enum: [text, image, file]
+          description: Type of message content
+          default: text
+      required:
+        - messageId
+        - roomId
+        - userId
+        - username
+        - content
+        - timestamp
+      example:
+        messageId: "123e4567-e89b-12d3-a456-426614174000"
+        roomId: "general"
+        userId: "user123"
+        username: "john_doe"
+        content: "Hello everyone!"
+        timestamp: "2025-09-26T10:30:00Z"
+        messageType: "text"

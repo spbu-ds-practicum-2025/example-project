@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package bank.transfer.v1;
+
+option go_package = "github.com/spbu-ds-practicum-2025/example-project/gen/go/bank/transfer/v1";
+option java_package = "com.bank.transfer.v1";
+option java_multiple_files = true;
+option java_outer_classname = "BankTransferProto";
+
+// Bank Transfer Service
+service BankTransferService {
+  // Transfer money between accounts
+  rpc Transfer(TransferRequest) returns (TransferResponse);
+}
+
+// Transfer Request Message
+message TransferRequest {
+  // Unique identifier for this request to ensure idempotency
+  string idempotency_key = 1 [(validate.rules).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"];
+  
+  // UUID of the source account
+  string source = 2 [(validate.rules).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"];
+  
+  // UUID of the destination account
+  string destination = 3 [(validate.rules).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"];
+  
+  // Amount to transfer
+  Amount amount = 4;
+}
+
+// Amount Message
+message Amount {
+  // Amount value in the smallest currency unit (e.g., cents for USD)
+  int32 value = 1 [(validate.rules).int32.gt = 0];
+  
+  // Three-letter currency code (ISO 4217)
+  string currency = 2 [(validate.rules).string.pattern = "^[A-Z]{3}$"];
+}
+
+// Transfer Response Message
+message TransferResponse {
+  // Transfer success indicator
+  bool success = 1;
+}
+
+// Base Error Message
+message BaseError {
+  // Unique identifier for this error instance
+  string id = 1;
+  
+  // Error code identifying the type of error
+  string code = 2;
+  
+  // Human-readable error message
+  string message = 3;
+}
+
+// Validation Error Message
+message ValidationError {
+  // Base error information
+  BaseError base = 1;
+  
+  // Validation error code
+  ValidationErrorCode code = 2;
+  
+  // Field that failed validation
+  string field = 3;
+}
+
+// Application Error Message
+message ApplicationError {
+  // Base error information
+  BaseError base = 1;
+  
+  // Application error code
+  ApplicationErrorCode code = 2;
+  
+  // Additional error details
+  map<string, string> details = 3;
+}
+
+// Validation Error Codes
+enum ValidationErrorCode {
+  VALIDATION_ERROR_CODE_UNSPECIFIED = 0;
+  VALIDATION_ERROR_CODE_INVALID_UUID_FORMAT = 1;
+  VALIDATION_ERROR_CODE_MISSING_REQUIRED_FIELD = 2;
+  VALIDATION_ERROR_CODE_INVALID_CURRENCY_CODE = 3;
+  VALIDATION_ERROR_CODE_INVALID_AMOUNT_VALUE = 4;
+  VALIDATION_ERROR_CODE_INVALID_REQUEST_FORMAT = 5;
+}
+
+// Application Error Codes
+enum ApplicationErrorCode {
+  APPLICATION_ERROR_CODE_UNSPECIFIED = 0;
+  APPLICATION_ERROR_CODE_INSUFFICIENT_FUNDS = 1;
+  APPLICATION_ERROR_CODE_ACCOUNT_NOT_FOUND = 2;
+  APPLICATION_ERROR_CODE_ACCOUNT_FROZEN = 3;
+  APPLICATION_ERROR_CODE_TRANSFER_LIMIT_EXCEEDED = 4;
+  APPLICATION_ERROR_CODE_SAME_ACCOUNT_TRANSFER = 5;
+  APPLICATION_ERROR_CODE_SERVICE_UNAVAILABLE = 6;
+}
+
+// Import validation rules (requires protoc-gen-validate)
+import "validate/validate.proto";

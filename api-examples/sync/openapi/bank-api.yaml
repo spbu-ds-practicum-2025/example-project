@@ -1,0 +1,153 @@
+openapi: 3.0.3
+info:
+  title: Bank Transfer API
+  description: API for bank transfers between accounts
+  version: 1.0.0
+servers:
+  - url: https://api.bank.example.com/v1
+    description: Production server
+paths:
+  /transfer:
+    post:
+      summary: Transfer money between accounts
+      description: Transfers a specified amount from source account to destination account
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          description: Transfer successful
+          content: {}
+        '400':
+          description: Bad request - invalid input parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+        '422':
+          description: Unprocessable entity - business logic error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationError'
+components:
+  parameters:
+    IdempotencyKey:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique identifier for this request to ensure idempotency
+      example: "123e4567-e89b-12d3-a456-426614174000"
+  schemas:
+    TransferRequest:
+      type: object
+      required:
+        - source
+        - destination
+        - amount
+      properties:
+        source:
+          type: string
+          format: uuid
+          description: UUID of the source account
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        destination:
+          type: string
+          format: uuid
+          description: UUID of the destination account
+          example: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        amount:
+          $ref: '#/components/schemas/Amount'
+    Amount:
+      type: object
+      required:
+        - value
+        - currency
+      properties:
+        value:
+          type: integer
+          description: Amount value in the smallest currency unit (e.g., cents for USD)
+          minimum: 1
+          example: 10000
+        currency:
+          type: string
+          description: Three-letter currency code (ISO 4217)
+          pattern: "^[A-Z]{3}$"
+          example: "USD"
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message describing what went wrong
+          example: "Invalid UUID format"
+    BaseError:
+      type: object
+      required:
+        - id
+        - code
+        - message
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for this error instance
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        code:
+          type: string
+          description: Error code identifying the type of error
+          example: "GENERIC_ERROR"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "An error occurred"
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+        - type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - "INVALID_UUID_FORMAT"
+                - "MISSING_REQUIRED_FIELD"
+                - "INVALID_CURRENCY_CODE"
+                - "INVALID_AMOUNT_VALUE"
+                - "INVALID_REQUEST_FORMAT"
+              description: Validation error code
+              example: "INVALID_UUID_FORMAT"
+            field:
+              type: string
+              description: Field that failed validation
+              example: "source"
+    ApplicationError:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+        - type: object
+          properties:
+            code:
+              type: string
+              enum:
+                - "INSUFFICIENT_FUNDS"
+                - "ACCOUNT_NOT_FOUND"
+                - "ACCOUNT_FROZEN"
+                - "TRANSFER_LIMIT_EXCEEDED"
+                - "SAME_ACCOUNT_TRANSFER"
+                - "SERVICE_UNAVAILABLE"
+              description: Application error code
+              example: "INSUFFICIENT_FUNDS"
+            details:
+              type: object
+              description: Additional error details specific to the error type
+              additionalProperties: true
+              example:
+                availableBalance: 5000
+                requestedAmount: 10000
