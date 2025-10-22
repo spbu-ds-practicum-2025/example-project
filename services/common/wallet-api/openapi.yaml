@@ -160,6 +160,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/NotFound'
 
+  /accounts/{accountId}/balance:
+    get:
+      tags:
+        - AccountOperations
+      operationId: getAccountBalance
+      summary: Retrieve account balance
+      description: Get current balance for a specific account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      responses:
+        '200':
+          description: Balance retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+
 components:
   parameters:
     AccountIdParam:
@@ -447,6 +488,19 @@ components:
         - operationId
       example:
         operationId: "987e6543-e21b-34d3-c456-426614174999"
+
+    BalanceResponse:
+      type: object
+      description: Response for retrieving the current account balance.
+      properties:
+        balance:
+          $ref: '#/components/schemas/Amount'
+      required:
+        - balance
+      example:
+        balance:
+          value: "150.00"
+          currencyCode: RUB
 
     BaseError:
       type: object
