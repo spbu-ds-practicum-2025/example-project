@@ -1,0 +1,1 @@
+Placeholder for bank-card-adapter clients directory

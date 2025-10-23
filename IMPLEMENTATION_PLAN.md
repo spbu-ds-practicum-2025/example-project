@@ -1,7 +1,7 @@
 # Implementation Plan: Electronic Wallet Distributed System
 
 ## Overview
-This document outlines the detailed implementation plan for the Electronic Wallet system, a distributed application built with FastAPI, gRPC, PostgreSQL, ClickHouse, and Docker Compose.
+This document outlines the detailed implementation plan for the Electronic Wallet system. The analytics-service will be implemented in Python using FastAPI. All other services (API Gateway, Bank Service, Bank Card Adapter) will be implemented in Go with an emphasis on using as few external dependencies as possible while keeping interoperability (gRPC for inter-service communication and REST for the external API). Docker Compose remains the target orchestration.
 
 ## Technology Stack
 
@@ -35,115 +35,63 @@ This document outlines the detailed implementation plan for the Electronic Walle
 
 ```
 services/
-├── common/                              # Shared contracts and specifications
+├── common/                              # Shared contracts and specifications (OpenAPI, .proto, AsyncAPI)
 │   ├── wallet-api/                      # REST API specification (OpenAPI)
 │   │   └── openapi.yaml
 │   ├── bank-service-api/                # Bank gRPC API
 │   │   └── bank_service.proto
 │   ├── bank-card-adapter-api/           # BankCardAdapter gRPC API
 │   │   └── bank_card_adapter.proto
-│   ├── analytics-service-api/           # Analytics gRPC API
+│   ├── analytics-service-api/           # Analytics gRPC API (kept for interop)
 │   │   └── analytics_service.proto
 │   └── analytics-service-kafka-spec/    # Kafka event schemas (AsyncAPI)
 │       ├── asyncapi.yaml                # AsyncAPI specification
 │       └── schemas/                     # Event schemas
 │           ├── transfer_event.json      # JSON Schema for TransferEvent
 │           └── topup_event.json         # JSON Schema for TopUpEvent
-│
-├── api-gateway/                         # API Gateway service
+
+├── api-gateway/                         # API Gateway service (Go)
+│   ├── cmd/                             # main package for building binary
+│   │   └── server/
+│   │       └── main.go
+│   ├── internal/
+│   │   ├── handlers/                    # HTTP handlers (net/http)
+│   │   ├── clients/                     # gRPC clients (Go generated stubs)
+│   │   └── middleware/
+│   ├── go.mod
+│   └── Dockerfile
+
+├── bank-service/                        # Bank service (Go)
+│   ├── cmd/
+│   │   └── server/
+│   │       └── main.go                  # gRPC server entrypoint in Go
+│   ├── internal/
+│   │   ├── domain/                      # Business logic
+│   │   ├── db/                          # DB layer using database/sql + driver
+│   │   └── grpc/                        # gRPC servicer implementations
+│   ├── proto/                           # Generated gRPC code (Go)
+│   ├── go.mod
+│   └── Dockerfile
+
+├── analytics-service/                   # Analytics service (Python, FastAPI)
 │   ├── app/
-│   │   ├── __init__.py
 │   │   ├── main.py                      # FastAPI application
-│   │   ├── api/                         # Generated from OpenAPI
-│   │   │   ├── __init__.py
-│   │   │   ├── models.py
-│   │   │   └── routes.py
-│   │   ├── clients/                     # gRPC clients
-│   │   │   ├── __init__.py
-│   │   │   ├── bank_client.py
-│   │   │   ├── bank_card_client.py
-│   │   │   └── analytics_client.py
-│   │   ├── middleware/
-│   │   │   ├── __init__.py
-│   │   │   └── auth.py
-│   │   └── config.py
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── pyproject.toml
-│
-├── bank-service/                        # Bank service
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                      # FastAPI + gRPC server
-│   │   ├── grpc_server/                 # gRPC implementation
-│   │   │   ├── __init__.py
-│   │   │   ├── server.py
-│   │   │   └── servicer.py
+│   │   ├── api/                         # API endpoints
 │   │   ├── domain/                      # Business logic
-│   │   │   ├── __init__.py
-│   │   │   ├── models.py
-│   │   │   ├── repositories.py
-│   │   │   └── services.py
-│   │   ├── db/                          # Database layer
-│   │   │   ├── __init__.py
-│   │   │   ├── models.py                # SQLAlchemy models
-│   │   │   ├── migrations/              # Alembic migrations
-│   │   │   └── session.py
-│   │   ├── kafka/                       # Kafka producer
-│   │   │   ├── __init__.py
-│   │   │   └── producer.py
-│   │   └── config.py
-│   ├── proto/                           # Generated gRPC code
-│   │   └── bank_service_pb2.py
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── alembic.ini
-│
-├── analytics-service/                   # Analytics service
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                      # FastAPI + gRPC server
-│   │   ├── grpc_server/                 # gRPC implementation
-│   │   │   ├── __init__.py
-│   │   │   ├── server.py
-│   │   │   └── servicer.py
-│   │   ├── domain/                      # Business logic
-│   │   │   ├── __init__.py
-│   │   │   ├── models.py
-│   │   │   ├── repositories.py
-│   │   │   └── services.py
-│   │   ├── db/                          # ClickHouse layer
-│   │   │   ├── __init__.py
-│   │   │   ├── schema.sql
-│   │   │   └── client.py
+│   │   ├── db/                          # ClickHouse client and schema
 │   │   ├── kafka/                       # Kafka consumer
-│   │   │   ├── __init__.py
-│   │   │   └── consumer.py
 │   │   └── config.py
-│   ├── proto/                           # Generated gRPC code
-│   │   └── analytics_service_pb2.py
 │   ├── requirements.txt
 │   └── Dockerfile
-│
-├── bank-card-adapter/                   # Bank Card Adapter service
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                      # FastAPI + gRPC server
-│   │   ├── grpc_server/                 # gRPC implementation
-│   │   │   ├── __init__.py
-│   │   │   ├── server.py
-│   │   │   └── servicer.py
-│   │   ├── domain/                      # Business logic
-│   │   │   ├── __init__.py
-│   │   │   └── payment_service.py
-│   │   ├── clients/                     # External clients
-│   │   │   ├── __init__.py
-│   │   │   ├── bank_client.py           # gRPC client to Bank
-│   │   │   └── payment_gateway.py       # Mock external payment
-│   │   └── config.py
-│   ├── proto/                           # Generated gRPC code
-│   │   └── bank_card_adapter_pb2.py
-│   ├── requirements.txt
+
+├── bank-card-adapter/                   # Bank Card Adapter service (Go)
+│   ├── cmd/
+│   │   └── server/
+│   │       └── main.go
+│   ├── internal/
+│   │   ├── grpc/
+│   │   └── clients/                     # external payment mock
+│   ├── go.mod
 │   └── Dockerfile
 ```
 
@@ -151,7 +99,7 @@ services/
 
 ## Phase 1: Core Transfer Functionality (MVP - Weeks 1-4)
 
-**Focus**: Implement basic transfer operations between accounts using only API Gateway and Bank Service. No authentication, no analytics, no top-ups.
+Focus: Implement basic transfer operations between accounts using the API Gateway (Go) and Bank Service (Go). Analytics (Python/FastAPI) is excluded from Phase 1 functional scope but kept in the repository for later integration.
 
 ### 1.1 Define gRPC Contracts (Week 1)
 
@@ -169,21 +117,16 @@ services/
 
 **Task 1.2.1: Create Proto Compilation Script**
 - **File**: `scripts/generate_protos.ps1` (for Windows PowerShell)
-- Use `grpcio-tools` to generate Python code from `.proto` files
-- Output to each service's `proto/` directory
-- Focus on bank-service proto only for Phase 1
+- Use `protoc` with the Go and Python plugins to generate code. For Go use `--go_out` and `--go-grpc_out`; for Python generate only if analytics-service needs the stubs.
+- Output generated Go code to each Go service's `proto/` or `gen/` directory and Python code to `analytics-service/proto/` only if required.
+- Prefer keeping code generation scripts small and idempotent.
 
-**Task 1.2.2: OpenAPI Code Generation for API Gateway**
-- Tool: `datamodel-code-generator` or `openapi-generator`
-- Generate Pydantic models from `wallet-api/openapi.yaml`
-- Focus only on transfer endpoint for Phase 1
-- Generate route stubs for FastAPI
+**Task 1.2.2: OpenAPI and REST for API Gateway**
+- The OpenAPI spec in `services/common/wallet-api/openapi.yaml` remains the external contract. For API Gateway (Go), prefer hand-written DTOs/handlers using `net/http` to avoid heavy OpenAPI codegen dependencies. If codegen is desired, keep it optional.
 
 **Task 1.2.3: Setup Common Dependencies**
-- Create basic `requirements.txt` files for Bank Service and API Gateway
-- Version pinning strategy
-
-**Note**: AsyncAPI and other proto files will be added in later phases
+- For Go services: `go.mod` files with minimal dependencies (gRPC packages, PostgreSQL driver). Keep dependency surface small.
+- For analytics-service: `requirements.txt` limited to FastAPI, uvicorn, pydantic, clickhouse-driver.
 
 ### 1.3 Local Development Setup (Week 1)
 
@@ -192,7 +135,6 @@ services/
 - Database initialization script: `docker/postgres/init.sql` or manual setup
 - Create `bank_db` database
 - Manually create test accounts table and insert 2 test accounts
-- Basic schema setup will be handled by Alembic migrations
 
 **Example test data**:
 ```sql
@@ -202,24 +144,14 @@ INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
 ```
 
 **Task 1.3.2: Development Environment**
-- Python 3.11+ virtual environments for each service
+- Go toolchain (1.25+) for Go services
+- Python 3.11+ virtual environment for analytics-service only
 - Install dependencies locally for development
-- Setup IDE/editor for Python development
 - Configure environment variables (.env files)
 
 **Task 1.3.3: Test Data Setup**
 - Create SQL script for inserting test accounts: `docker/postgres/test_data.sql`
-- Suggested test accounts:
-  ```sql
-  -- Account 1: Alice (1000 RUB initial balance)
-  INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
-    ('123e4567-e89b-12d3-a456-426614174000', 1000.00, NOW(), NOW());
-  
-  -- Account 2: Bob (500 RUB initial balance)
-  INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
-    ('987e6543-e21b-34d3-c456-426614174999', 500.00, NOW(), NOW());
-  ```
-- Run this script after Alembic migrations to populate test data
+- Suggested test accounts (unchanged)
 
 **Note**: Full docker-compose with all services will be added in Phase 7
 
@@ -383,15 +315,13 @@ INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
 ### 5.2 Bank Service Kafka Integration (Week 5)
 
 **Task 5.2.1: Add Kafka Producer**
-- Implement Kafka producer in Bank Service
-- Publish `TransferEvent` after successful transfers
-- JSON serialization with Pydantic models
-- Handle producer errors gracefully
+- Implement Kafka producer in Bank Service (Go). Use a small, maintained client (for example, segmentio/kafka-go or confluent-kafka-go) but prefer minimal dependencies. Serialize events as JSON.
+- Publish `TransferEvent` after successful transfers.
+- Handle producer errors gracefully and keep event publishing non-blocking for the transfer transaction.
 
 **Task 5.2.2: Update Transfer Flow**
-- Modify transfer logic to publish events
-- Ensure event publishing doesn't affect transaction success
-- Add configuration for Kafka broker
+- Modify transfer logic to publish events (as a best-effort background action) and ensure the transfer transaction is not delayed by broker issues.
+- Add configuration for Kafka broker in Go service configuration.
 
 ### 5.3 Analytics Service Implementation (Week 5-6)
 
@@ -400,16 +330,15 @@ INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
 - Create `operations` table schema
 - Test basic queries
 
-**Task 5.3.2: Implement Analytics Service**
-- Kafka consumer for transfer events
-- Insert events into ClickHouse
-- gRPC server for GetOperations
+**Task 5.3.2: Implement Analytics Service (Python, FastAPI)**
+- Kafka consumer for transfer events (use aiokafka or another lightweight consumer)
+- Insert events into ClickHouse using `clickhouse-driver` or similar
+- Provide a REST API (FastAPI) for operations retrieval and/or a gRPC server if interop with Go clients is desired (generate gRPC stubs in Go/Python as needed)
 - Pagination and filtering logic
 
 **Task 5.3.3: Define Analytics Proto**
-- Create `analytics_service.proto`
-- Generate Python code
-- Implement servicer
+- Create `analytics_service.proto` if a gRPC API is required for API Gateway interop
+- Generate Python code for analytics-service and Go stubs for callers if gRPC is chosen
 
 ### 5.4 API Gateway Analytics Integration (Week 6)
 
@@ -518,25 +447,26 @@ INSERT INTO accounts (id, balance, created_at, updated_at) VALUES
 
 **For each service, create**:
 - Multi-stage build (build + runtime)
-- Python base image (python:3.11-slim)
-- Install dependencies from requirements.txt
+- Use language-appropriate base images:
+  - Go services: `golang:1.25` (builder) and `gcr.io/distroless/static` or `alpine` slim images for runtime
+  - Analytics-service: `python:3.11-slim`
+- Install dependencies (Go modules via `go mod download`; Python via `pip install -r requirements.txt`)
 - Copy application code
 - Set proper user (non-root)
 - Define entrypoint
 
-**Example structure**:
+**Example Go multi-stage structure (conceptual)**:
 ```dockerfile
-FROM python:3.11-slim as builder
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --user -r requirements.txt
-
-FROM python:3.11-slim
-WORKDIR /app
-COPY --from=builder /root/.local /root/.local
+FROM golang:1.25 AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-ENV PATH=/root/.local/bin:$PATH
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/server ./cmd/server
+
+FROM gcr.io/distroless/static
+COPY --from=builder /bin/server /bin/server
+ENTRYPOINT ["/bin/server"]
 ```
 
 ### 7.2 Docker Compose Orchestration (Week 9)
@@ -649,39 +579,39 @@ bank-service:
 ## Detailed Task Breakdown by Week
 
 ### Week 1: Contracts and Setup
-1. Define bank_service.proto (TransferMoney, GetBalance RPCs only)
-2. Generate Python gRPC code from proto
+1. Define `bank_service.proto` (TransferMoney, GetBalance RPCs only)
+2. Generate Go gRPC code from proto (use protoc with Go plugins)
 3. Setup PostgreSQL locally or in Docker container
-4. Create bank_db database and accounts table
+4. Create `bank_db` database and accounts table
 5. **Manually insert 2 test accounts** into database
-6. Create basic requirements.txt for Bank Service and API Gateway
-7. Initialize project structure for both services
-8. Setup development environment (.env files, virtual environments)
+6. Create minimal `go.mod` files for Bank Service and API Gateway; create `requirements.txt` for analytics-service
+7. Initialize project structure for Go and Python services
+8. Setup development environment (Go toolchain and Python venv for analytics-service)
 
 ### Week 2: Bank Service Foundation
-1. Setup SQLAlchemy models (Account, Transfer)
-2. Initialize Alembic and create first migration
-3. Implement AccountRepository (read-only operations: get by id, check existence)
-4. Implement TransferRepository with transaction logic
-5. Implement TransferService with business rules
-6. Write unit tests for domain logic
+1. Define database schema for Account and Transfer (SQL migration files)
+2. Choose Go database access strategy: `database/sql` + driver (pgx or lib/pq) or a lightweight SQL builder; create initial DB layer
+3. Implement AccountRepository (read-only operations: get by id, check existence) in Go
+4. Implement TransferRepository with transaction logic in Go
+5. Implement TransferService with business rules in Go
+6. Write unit tests for domain logic (Go testing)
 7. **Verify test accounts exist in database**
 
 ### Week 3: Bank Service Completion
-1. Setup gRPC server infrastructure
-2. Implement gRPC servicer (TransferMoney, GetBalance RPCs)
-3. Integrate servicer with domain services
+1. Setup gRPC server infrastructure in Go
+2. Implement gRPC servicer (TransferMoney, GetBalance RPCs) using generated Go stubs
+3. Integrate servicer with domain services and DB layer
 4. Write integration tests with PostgreSQL (using test accounts)
 5. Test concurrent transfers and edge cases
 6. Test with manually created accounts
 
 ### Week 4: API Gateway + Testing
-1. Setup FastAPI application structure
-2. Generate Pydantic models from OpenAPI (transfer endpoint only)
-3. Implement gRPC client for Bank Service (transfer, get_balance)
-4. Implement transfer endpoint in API Gateway
-5. Add idempotency handling
-6. Write API tests for transfer endpoint (using test account IDs)
+1. Setup Go API Gateway application structure (net/http)
+2. Create or generate lightweight DTOs from OpenAPI if desired; otherwise hand-write small request/response structs for the transfer endpoint
+3. Implement gRPC client for Bank Service in Go (transfer, get_balance)
+4. Implement transfer endpoint in API Gateway (map REST → gRPC)
+5. Add idempotency handling (in-memory for MVP or small durable store)
+6. Write API tests for transfer endpoint (Go tests or httpx + live server)
 7. End-to-end integration testing with pre-created accounts
 8. Test error scenarios and edge cases
 
@@ -738,18 +668,18 @@ bank-service:
 ## Definition of Done
 
 ### Phase 1 DoD (Week 1-4): Core Transfer Functionality
-- [x] bank_service.proto defined with TransferMoney and GetBalance RPCs (no CreateAccount)
-- [x] gRPC code generated for Bank Service
+- [x] `bank_service.proto` defined with TransferMoney and GetBalance RPCs (no CreateAccount)
+- [x] gRPC code generated for Go services (Bank Service and API Gateway clients as needed)
 - [x] PostgreSQL running locally or in Docker
 - [x] **Two test accounts manually created in database**
-- [x] Bank Service implemented with SQLAlchemy + Alembic
+- [x] Bank Service implemented in Go with a safe DB access layer using transactions
 - [x] AccountRepository with read-only operations (no create)
 - [x] Transfer logic with ACID guarantees (atomicity, isolation)
-- [x] gRPC server running and accepting requests
-- [x] API Gateway implemented with FastAPI
+- [x] gRPC server running and accepting requests (Go)
+- [x] API Gateway implemented in Go (REST endpoint -> gRPC call)
 - [x] Transfer endpoint (`POST /accounts/{accountId}/transfers`) functional
 - [x] Idempotency handling implemented
-- [x] Unit tests for Bank Service >80% coverage
+- [x] Unit tests for Bank Service (Go) covering domain logic
 - [x] Integration tests for API Gateway → Bank Service (using test accounts)
 - [x] End-to-end tests for complete transfer flow (between test accounts)
 - [x] Edge cases tested (insufficient funds, missing accounts, concurrent transfers)
@@ -791,17 +721,15 @@ bank-service:
 
 ---
 
-## Key Technologies and Tools Summary
+### Key Technologies and Tools Summary
 
 ### Development
-- Python 3.11+
-- FastAPI
-- gRPC (grpcio, grpcio-tools)
-- SQLAlchemy + Alembic
-- Pydantic
-- aiokafka
-- asyncpg
-- clickhouse-driver
+- Go 1.25+ (API Gateway, Bank Service, Bank Card Adapter)
+  - github.com/google/go-cmp (optional for tests), google.golang.org/grpc, google.golang.org/protobuf
+  - database/sql plus a PostgreSQL driver (github.com/lib/pq or github.com/jackc/pgx)
+  - prefer net/http for REST handlers
+- Python 3.11+ (analytics-service only)
+  - FastAPI, pydantic, uvicorn, clickhouse-driver (or similar)
 
 ### Infrastructure
 - Docker & Docker Compose
@@ -810,16 +738,13 @@ bank-service:
 - Apache Kafka + Zookeeper
 
 ### Testing
-- pytest
-- pytest-asyncio
-- testcontainers
-- httpx (for API testing)
+- Go: `go test` for unit and integration tests (use testcontainers or docker-compose for integration)
+- Python: pytest for analytics-service tests
 
 ### Code Generation
-- grpcio-tools (for proto → Python)
-- datamodel-code-generator or openapi-generator (for OpenAPI → Python)
-- AsyncAPI CLI (for validation)
-- datamodel-code-generator (for JSON Schema → Pydantic models)
+- `protoc` with Go plugins (`protoc-gen-go`, `protoc-gen-go-grpc`) for Go services
+- Generate Python stubs for analytics-service only if it needs to call gRPC APIs directly
+- Keep OpenAPI codegen optional; prefer hand-written small DTOs in Go for the API Gateway
 
 ---
 
