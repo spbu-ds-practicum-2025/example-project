@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package bank.v1;
+option go_package = "com.skywaet/wallet/bank/gen/bankv1;bankv1";
+
+// Bank Service provides core banking operations for the Electronic Wallet system.
+// This service handles money transfers between accounts, account information retrieval, and
+// account top-ups. It is designed to be called by other internal services via gRPC.
+service BankService {
+  // TransferMoney executes a money transfer between two accounts atomically.
+  // This operation is idempotent when called with the same idempotency key.
+  // Returns an error if the sender has insufficient funds or if either account doesn't exist.
+  rpc TransferMoney(TransferMoneyRequest) returns (TransferMoneyResponse);
+
+  // GetAccount retrieves complete account information including balance.
+  // Used for validation, testing, and account inquiries.
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+
+  // TopUp adds funds to a specific account.
+  // This RPC is typically called by the BankCardAdapter service after successful
+  // payment processing with an external payment gateway.
+  // This operation is idempotent when called with the same idempotency key.
+  rpc TopUp(TopUpRequest) returns (TopUpResponse);
+}
+
+// TransferMoneyRequest represents a request to transfer money from one account to another.
+message TransferMoneyRequest {
+  // Unique identifier of the sender's account (UUID format).
+  // This account will be debited with the transfer amount.
+  // Required field.
+  string sender_id = 1;
+
+  // Unique identifier of the recipient's account (UUID format).
+  // This account will be credited with the transfer amount.
+  // Required field.
+  string recipient_id = 2;
+
+  // The monetary amount to transfer.
+  // Must be positive and greater than zero.
+  // Required field.
+  Amount amount = 3;
+
+  // Idempotency key to ensure the transfer is processed exactly once.
+  // Multiple requests with the same key will return the same result without
+  // executing the transfer multiple times (UUID format).
+  // Required field for ensuring idempotent operations.
+  string idempotency_key = 4;
+}
+
+// TransferMoneyResponse represents the result of a money transfer operation.
+message TransferMoneyResponse {
+  // Unique identifier of the completed transfer operation (UUID format).
+  // This ID can be used to track and query the transfer in the analytics system.
+  string operation_id = 1;
+
+  // Status of the transfer operation.
+  TransferStatus status = 2;
+
+  // Human-readable message providing additional details about the transfer result.
+  // May contain error descriptions or success confirmations.
+  string message = 3;
+
+  // Timestamp when the transfer was executed (ISO 8601 format).
+  // Represents the moment the transaction was committed to the database.
+  string timestamp = 4;
+}
+
+// GetAccountRequest represents a request to retrieve account information.
+message GetAccountRequest {
+  // Unique identifier of the account to query (UUID format).
+  // Required field.
+  string account_id = 1;
+}
+
+// GetAccountResponse represents complete account information.
+message GetAccountResponse {
+  // Unique identifier of the account (UUID format).
+  string account_id = 1;
+
+  // The current balance of the account.
+  Amount balance = 2;
+
+  // Timestamp of when the account information was retrieved (ISO 8601 format).
+  string timestamp = 3;
+}
+
+// TopUpRequest represents a request to add funds to an account.
+message TopUpRequest {
+  // Unique identifier of the account to be credited (UUID format).
+  // Required field.
+  string account_id = 1;
+
+  // The monetary amount to top up the account.
+  // Must be positive and greater than zero.
+  // Required field.
+  Amount amount = 2;
+
+  // Idempotency key to ensure the top-up is processed exactly once.
+  // Multiple requests with the same key will return the same result without
+  // executing the top-up multiple times (UUID format).
+  // Required field for ensuring idempotent operations.
+  string idempotency_key = 3;
+
+  // Source of the top-up (e.g., "bank_card", "external_transfer").
+  // Used for tracking and analytics purposes.
+  string source = 4;
+
+  // Optional reference to an external transaction ID from the payment gateway.
+  // Used for reconciliation and audit purposes.
+  string external_transaction_id = 5;
+}
+
+// TopUpResponse represents the result of a top-up operation.
+message TopUpResponse {
+  // Unique identifier of the completed top-up operation (UUID format).
+  // This ID can be used to track and query the top-up in the analytics system.
+  string operation_id = 1;
+
+  // Status of the top-up operation.
+  TopUpStatus status = 2;
+
+  // Human-readable message providing additional details about the top-up result.
+  // May contain error descriptions or success confirmations.
+  string message = 3;
+
+  // Timestamp when the top-up was executed (ISO 8601 format).
+  // Represents the moment the transaction was committed to the database.
+  string timestamp = 4;
+
+  // Updated balance after the top-up operation.
+  Amount new_balance = 5;
+}
+
+// Amount represents a monetary value with its currency.
+// All monetary operations in the system use this message type.
+message Amount {
+  // The numeric value of the amount as a string to preserve precision.
+  // Format: decimal string with up to 2 decimal places (e.g., "100.00", "50.50").
+  // Must be non-negative for most operations.
+  // Required field.
+  string value = 1;
+
+  // ISO 4217 currency code (e.g., "RUB" for Russian Ruble).
+  // Currently, the system supports only RUB, but this field allows for future expansion.
+  // Required field.
+  string currency_code = 2;
+}
+
+// TransferStatus represents the possible states of a transfer operation.
+enum TransferStatus {
+  // Default/unspecified status - should not be used in practice.
+  TRANSFER_STATUS_UNSPECIFIED = 0;
+
+  // Transfer completed successfully.
+  // Both sender and recipient accounts have been updated atomically.
+  TRANSFER_STATUS_SUCCESS = 1;
+}
+
+// TopUpStatus represents the possible states of a top-up operation.
+enum TopUpStatus {
+  // Default/unspecified status - should not be used in practice.
+  TOP_UP_STATUS_UNSPECIFIED = 0;
+
+  // Top-up completed successfully.
+  // The account balance has been increased by the specified amount.
+  TOP_UP_STATUS_SUCCESS = 1;
+}
