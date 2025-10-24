@@ -1,7 +1,8 @@
 syntax = "proto3";
 
 package bank.v1;
-option go_package = "com.skywaet/wallet/bank/gen/bankv1;bankv1";
+
+option go_package = "bank.v1";
 
 // Bank Service provides core banking operations for the Electronic Wallet system.
 // This service handles money transfers between accounts, account information retrieval, and
