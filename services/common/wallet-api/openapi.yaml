@@ -1,0 +1,565 @@
+openapi: 3.0.0
+info:
+  title: Wallet API
+  description: |
+    API for external clients to 
+    interact with the Electronic Wallet system.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local server
+tags:
+  - name: AccountOperations
+    description: Operations related to account.
+  - name: Account
+    description: Methods for interaction with accounts.
+paths:
+  /accounts/{accountId}/operations:
+    get:
+      tags:
+        - AccountOperations
+      operationId: getAccountOperations
+      summary: Retrieve account operations
+      description: Get all operations for a specific account with optional pagination.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+        - name: limit
+          in: query
+          required: false
+          description: The maximum number of operations to retrieve.
+          schema:
+            type: integer
+            example: 10
+        - name: afterId
+          in: query
+          required: false
+          description: The ID of the operation after which to retrieve subsequent operations.
+          schema:
+            $ref: '#/components/schemas/OperationId'
+      responses:
+        '200':
+          description: Operations retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetOperationsResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+
+  /accounts/{accountId}/topups:
+    post:
+      tags:
+        - AccountOperations
+      operationId: topUpAccount
+      summary: Top up an account
+      description: Add funds to a specific account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopUpRequest'
+      responses:
+        '200':
+          description: Top-up successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopUpResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+
+  /accounts/{accountId}/transfers:
+    post:
+      tags:
+        - AccountOperations
+      operationId: transferBetweenAccounts
+      summary: Transfer money between accounts
+      description: Transfer money from one account to another.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '200':
+          description: Transfer successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferResponse'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+
+  /accounts/{accountId}:
+    get:
+      tags:
+        - Account
+      operationId: getAccount
+      summary: Retrieve account details
+      description: Get all properties of a specific account.
+      parameters:
+        - $ref: '#/components/parameters/AccountIdParam'
+      responses:
+        '200':
+          description: Account retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BadRequest'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Unauthorized'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Forbidden'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotFound'
+
+components:
+  parameters:
+    AccountIdParam:
+      name: accountId
+      in: path
+      required: true
+      description: The unique identifier of the account.
+      schema:
+        $ref: '#/components/schemas/AccountId'
+
+    IdempotencyKeyHeader:
+      name: X-Idempotency-Key
+      in: header
+      required: true
+      description: A unique key to ensure idempotency of the request.
+      schema:
+        $ref: '#/components/schemas/IdempotencyKey'
+
+  schemas:
+    AccountId:
+      type: string
+      format: uuid
+      description: Represents the unique identifier for an account.
+      example: "123e4567-e89b-12d3-a456-426614174000"
+
+    IdempotencyKey:
+      type: string
+      format: uuid
+      description: Represents a unique key to ensure idempotency of the request.
+
+    GetOperationsResponse:
+      type: object
+      description: Response for retrieving a list of operations.
+      properties:
+        content:
+          type: array
+          description: The list of operations retrieved.
+          items:
+            $ref: '#/components/schemas/Operation'
+        afterId:
+          $ref: '#/components/schemas/OperationId'
+          description: The ID of the last operation in the retrieved list.
+      required:
+        - content
+      example:
+        content:
+          - id: "987e6543-e21b-34d3-c456-426614174999"
+            type: Topup
+            timestamp: "2025-10-12T14:48:00.000Z"
+            amount:
+              value: "100.00"
+              currencyCode: RUB
+          - id: "123e4567-e89b-12d3-a456-426614174000"
+            type: Transfer
+            timestamp: "2025-10-12T15:00:00.000Z"
+            amount:
+              value: "50.00"
+              currencyCode: RUB
+            senderId: "123e4567-e89b-12d3-a456-426614174000"
+            recipientId: "987e6543-e21b-34d3-c456-426614174999"
+        afterId: "987e6543-e21b-34d3-c456-426614174999"
+
+    Operation:
+      type: object
+      description: Represents a financial operation, such as a top-up or transfer.
+      properties:
+        id:
+          $ref: '#/components/schemas/OperationId'
+          description: The unique identifier for the operation.
+        type:
+          $ref: '#/components/schemas/OperationType'
+          description: The type of the operation.
+        timestamp:
+          type: string
+          format: date-time
+          description: The timestamp when the operation occurred.
+          example: "2025-10-12T14:48:00.000Z"
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: The amount involved in the operation.
+      required:
+        - id
+        - type
+        - timestamp
+        - amount
+      discriminator:
+        propertyName: type
+      oneOf:
+        - $ref: '#/components/schemas/TopupOperation'
+        - $ref: '#/components/schemas/TransferOperation'
+      example:
+        id: "987e6543-e21b-34d3-c456-426614174999"
+        type: Topup
+        timestamp: "2025-10-12T14:48:00.000Z"
+        amount:
+          value: "100.00"
+          currencyCode: RUB
+
+    OperationId:
+      type: string
+      format: uuid
+      description: Represents the unique identifier for an operation.
+      example: "987e6543-e21b-34d3-c456-426614174999"
+
+    OperationType:
+      type: string
+      description: Enum representing the type of operation.
+      enum:
+        - Topup
+        - Transfer
+      example: Topup
+
+    TopupOperation:
+      allOf:
+        - $ref: '#/components/schemas/Operation'
+        - type: object
+          description: Represents a top-up operation.
+      example:
+        id: "987e6543-e21b-34d3-c456-426614174999"
+        type: Topup
+        timestamp: "2025-10-12T14:48:00.000Z"
+        amount:
+          value: "100.00"
+          currencyCode: RUB
+
+    TransferOperation:
+      allOf:
+        - $ref: '#/components/schemas/Operation'
+        - type: object
+          description: Represents a transfer operation.
+          properties:
+            senderId:
+              $ref: '#/components/schemas/AccountId'
+              description: The account ID of the sender.
+              example: "123e4567-e89b-12d3-a456-426614174000"
+            recipientId:
+              $ref: '#/components/schemas/AccountId'
+              description: The account ID of the recipient.
+              example: "987e6543-e21b-34d3-c456-426614174999"
+          required:
+            - senderId
+            - recipientId
+      example:
+        id: "987e6543-e21b-34d3-c456-426614174999"
+        type: Transfer
+        timestamp: "2025-10-12T14:48:00.000Z"
+        amount:
+          value: "50.00"
+          currencyCode: RUB
+        senderId: "123e4567-e89b-12d3-a456-426614174000"
+        recipientId: "987e6543-e21b-34d3-c456-426614174999"
+
+    Amount:
+      type: object
+      description: Represents a monetary amount with currency.
+      properties:
+        value:
+          type: string
+          format: decimal
+          description: The monetary value of the operation.
+          example: "100.00"
+        currencyCode:
+          type: string
+          description: The currency code in ISO 4217 format.
+          example: RUB
+      required:
+        - value
+        - currencyCode
+
+    TopUpRequest:
+      type: object
+      description: Request body for a top-up operation.
+      properties:
+        accountId:
+          $ref: '#/components/schemas/AccountId'
+          description: The account to be topped up.
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: The amount to be added to the account.
+        method:
+          $ref: '#/components/schemas/TopUpMethod'
+          description: The method used for the top-up.
+      required:
+        - accountId
+        - amount
+        - method
+      example:
+        accountId: "123e4567-e89b-12d3-a456-426614174000"
+        amount:
+          value: "100.00"
+          currencyCode: RUB
+        method:
+          topUpMethod: BankCard
+
+    TopUpMethod:
+      type: object
+      description: Supertype for all top-up methods.
+      required:
+        - topUpMethod
+      properties:
+        topUpMethod:
+          type: string
+          description: The type of top-up method.
+          enum:
+            - BankCard
+      discriminator:
+        propertyName: topUpMethod
+      oneOf:
+        - $ref: '#/components/schemas/CardTopUpMethod'
+      example:
+        topUpMethod: BankCard
+
+    CardTopUpMethod:
+      allOf:
+        - $ref: '#/components/schemas/TopUpMethod'
+        - type: object
+          description: Top-up using a bank card.
+          properties:
+            cardDetails:
+              type: object
+              description: Details of the bank card used for the top-up.
+              properties:
+                cardNumber:
+                  type: string
+                  description: Bank card number.
+                  example: "4111111111111111"
+                expiryDate:
+                  type: string
+                  description: Expiry date of the card.
+                  example: "12/25"
+                cvv:
+                  type: string
+                  description: CVV code of the card.
+                  example: "123"
+              required:
+                - cardNumber
+                - expiryDate
+                - cvv
+          example:
+            topUpMethod: BankCard
+            cardDetails:
+              cardNumber: "4111111111111111"
+              expiryDate: "12/25"
+              cvv: "123"
+
+    TransferRequest:
+      type: object
+      description: Request body for a transfer operation.
+      properties:
+        recipientId:
+          $ref: '#/components/schemas/AccountId'
+          description: The account ID of the recipient.
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: The amount to be transferred.
+      required:
+        - recipientId
+        - amount
+      example:
+        recipientId: "987e6543-e21b-34d3-c456-426614174999"
+        amount:
+          value: "50.00"
+          currencyCode: RUB
+
+    TopUpResponse:
+      type: object
+      description: Response for a successful top-up operation.
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+          description: The unique identifier of the top-up operation.
+      required:
+        - operationId
+      example:
+        operationId: "987e6543-e21b-34d3-c456-426614174999"
+
+    TransferResponse:
+      type: object
+      description: Response for a successful transfer operation.
+      properties:
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+          description: The unique identifier of the transfer operation.
+      required:
+        - operationId
+      example:
+        operationId: "987e6543-e21b-34d3-c456-426614174999"
+
+    Account:
+      type: object
+      description: Represents an account with its properties.
+      properties:
+        accountId:
+          $ref: '#/components/schemas/AccountId'
+        balance:
+          $ref: '#/components/schemas/Amount'
+      required:
+        - accountId
+        - balance
+      example:
+        accountId: "123e4567-e89b-12d3-a456-426614174000"
+        balance:
+          value: "150.00"
+          currencyCode: RUB
+
+    BaseError:
+      type: object
+      description: Base error model for all error responses.
+      properties:
+        id: 
+          type: string
+          format: uuid
+          description: A unique identifier for the error instance.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        code:
+          type: string
+          description: A unique error code representing the error type.
+        description:
+          type: string
+          description: A detailed description of the error.
+      required:
+        - id
+        - code
+      example:
+        code: "400_BAD_REQUEST"
+        description: "The request could not be understood by the server due to malformed syntax."
+
+    BadRequest:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+      description: Error model for 400 Bad Request.
+      example:
+        code: "400_BAD_REQUEST"
+        description: "The request could not be understood by the server due to malformed syntax."
+
+    Unauthorized:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+      description: Error model for 401 Unauthorized.
+      example:
+        code: "401_UNAUTHORIZED"
+        description: "Authentication is required and has failed or has not yet been provided."
+
+    Forbidden:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+      description: Error model for 403 Forbidden.
+      example:
+        code: "403_FORBIDDEN"
+        description: "The server understood the request, but refuses to authorize it."
+
+    NotFound:
+      allOf:
+        - $ref: '#/components/schemas/BaseError'
+      description: Error model for 404 Not Found.
+      example:
+        code: "404_NOT_FOUND"
+        description: "The requested resource could not be found on the server."

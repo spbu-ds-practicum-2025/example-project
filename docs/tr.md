@@ -49,6 +49,10 @@
 
 ## 5. Пользовательские сценарии
 
+### Сценарий: просмотр баланса
+1. Пользователь запрашивает баланс своего аккаунта через клиентское приложение.
+2. Система возвращает баланс аккаунта пользователя.
+
 ### Сценарий: пополнение счёта через банковскую карту
 
 1. Пользователь выбирает пополнение счёта в клиентском приложении и вводит сумму и данные банковской карты.
@@ -62,9 +66,9 @@
 3. Если средств достаточно — выполняется транзакция, увеличивающая баланс B и уменьшающая баланс А.  
 4. Пользователь B видит пополнение, пользователь А - списание.  
 
-### Сценарий: просмотр истории переводов
-1. Пользователь запрашивает историю переводов через клиентское приложение.
-2. Система возвращает список всех переводов пользователя (отправленных и полученных).
+### Сценарий: просмотр истории операций
+1. Пользователь запрашивает историю операций через клиентское приложение
+2. Система возвращает пользователю историю операций
 
 ## 6. Архитектура
 
@@ -113,9 +117,31 @@ graph TD
 
 ## 7. Технические сценарии
 
+### Сценарий: просмотр баланса
+
+1. Клиент отправляет в API Gateway запрос GET /accounts/{accountId}/balance.
+2. API Gateway перенаправляет запрос в сервис Bank для получения текущего баланса.
+3. Bank возвращает текущий баланс для указанного аккаунта.
+4. API Gateway возвращает клиенту ответ с балансом.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant APIGateway
+  participant Bank
+  participant BankDB
+
+  Client->>APIGateway: GET /accounts/{accountId}/balance
+  APIGateway->>Bank: Запрос баланса для {accountId}
+  Bank->>BankDB: SELECT balance FROM accounts WHERE id={accountId}
+  BankDB-->>Bank: Баланс (value)
+  Bank-->>APIGateway: Баланс (value)
+  APIGateway-->>Client: 200 OK (balance)
+```
+
 ### Сценарий: пополнение счёта через банковскую карту
 
-1. Клиент отправляет в API Gateway запрос POST /topup с параметрами: сумма и данные карты.
+1. Клиент отправляет в API Gateway запрос POST /accounts/{accountId}/topup с параметрами: сумма и данные карты.
 2. API Gateway перенаправляет запрос в сервис BankCardAdapter.
 3. BankCardAdapter инициирует операцию во внешнем платёжном сервисе.
 4. После подтверждения успешного списания средств BankCardAdapter отправляет запрос на увеличение баланса пользователя в сервис Bank.
@@ -129,7 +155,7 @@ sequenceDiagram
   participant PaymentService
   participant Bank
 
-  Client->>APIGateway: POST /topup (сумма, карта)
+  Client->>APIGateway: POST /accounts/{accountId}/topup (сумма, карта)
   APIGateway->>BankCardAdapter: Запрос пополнения
   BankCardAdapter->>PaymentService: Провести платёж
   PaymentService-->>BankCardAdapter: Успех
@@ -141,7 +167,7 @@ sequenceDiagram
 
 ### Сценарий: выполнение перевода
 
-1. Клиент отправляет в API Gateway запрос POST /transfer с параметрами: сумма и получатель.
+1. Клиент отправляет в API Gateway запрос POST /accounts/{accountId}/transfers с параметрами: recipientId и amount.
 2. API Gateway перенаправляет запрос в сервис Bank.
 3. Bank обращается к транзакционной базе данных Bank DB для проверки и обновления балансов отправителя и получателя.
 4. Bank DB подтверждает успешное выполнение транзакции.
@@ -160,7 +186,7 @@ sequenceDiagram
   participant Analytics
   participant AnalyticsDB
 
-  Client->>APIGateway: POST /transfer(100,B)
+  Client->>APIGateway: POST /accounts/{accountId}/transfers (recipientId=B, amount=100)
   APIGateway->>Bank: Запрос перевода
   Bank->>BankDB: Проверить и обновить балансы
   BankDB-->>Bank: OK
@@ -169,6 +195,27 @@ sequenceDiagram
   Analytics->>AnalyticsDB: Обновить аналитику
   Bank-->>APIGateway: Успех
   APIGateway-->>Client: Перевод выполнен
+```
+
+### Сценарий: просмотр истории переводов
+1. Пользователь запрашивает историю переводов через клиентское приложение, отправляя GET /accounts/{accountId}/operations с опциональными параметрами `limit` и `afterId`.
+2. API Gateway перенаправляет запрос в сервис Analytics для выборки истории операций.
+3. Analytics возвращает список операций (включая пагинацию и возможный afterId).
+4. API Gateway возвращает клиенту ответ со списком операций.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant APIGateway
+  participant Analytics
+  participant AnalyticsDB
+
+  Client->>APIGateway: GET /accounts/{accountId}/operations?limit=10&afterId={opId}
+  APIGateway->>Analytics: Запрос истории операций для {accountId}, limit, afterId
+  Analytics->>AnalyticsDB: SELECT * FROM operations WHERE account_id={accountId} AND id>={afterId} LIMIT 10
+  AnalyticsDB-->>Analytics: Список операций
+  Analytics-->>APIGateway: Операции (content, afterId)
+  APIGateway-->>Client: 200 OK (GetOperationsResponse)
 ```
 
 ## 8. План разработки и тестирования
