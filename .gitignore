@@ -2,3 +2,5 @@
 .idea/
 **/openapi_*.go
 **/*pb.go
+# Generated from AsyncAPI specifications
+services/bank-service/internal/events/
