@@ -31,18 +31,29 @@ type TransferService struct {
 	accountRepo  AccountRepository
 	transferRepo TransferRepository
 	txManager    TransactionManager
+	// Optional event publisher to emit domain events (e.g. transfer completed)
+	eventPublisher EventPublisher
 }
 
 // NewTransferService creates a new instance of TransferService.
+// EventPublisher publishes domain events to external systems (e.g. RabbitMQ).
+type EventPublisher interface {
+	PublishTransferCompleted(ctx context.Context, transfer *Transfer) error
+}
+
+// NewTransferService creates a new instance of TransferService.
+// Pass nil for eventPublisher if no events should be emitted.
 func NewTransferService(
 	accountRepo AccountRepository,
 	transferRepo TransferRepository,
 	txManager TransactionManager,
+	eventPublisher EventPublisher,
 ) *TransferService {
 	return &TransferService{
-		accountRepo:  accountRepo,
-		transferRepo: transferRepo,
-		txManager:    txManager,
+		accountRepo:    accountRepo,
+		transferRepo:   transferRepo,
+		txManager:      txManager,
+		eventPublisher: eventPublisher,
 	}
 }
 
@@ -172,6 +183,21 @@ func (s *TransferService) ExecuteTransfer(
 
 	if err != nil {
 		return nil, err
+	}
+
+	// After successful transaction commit, publish transfer completed event (best-effort).
+	// We publish asynchronously so that transient RabbitMQ failures don't make the
+	// already-committed transfer appear to fail. Production systems should use
+	// a durable outbox or at-least-once delivery with retry for stronger guarantees.
+	if s.eventPublisher != nil {
+		// capture transfer for goroutine
+		go func(t *Transfer) {
+			if err := s.eventPublisher.PublishTransferCompleted(context.Background(), t); err != nil {
+				// Best-effort: log the failure. Domain package doesn't have structured
+				// logging; print to stderr for now. Consider replacing with a logger.
+				fmt.Printf("warning: failed to publish transfer completed event: %v\n", err)
+			}
+		}(transfer)
 	}
 
 	return transfer, nil

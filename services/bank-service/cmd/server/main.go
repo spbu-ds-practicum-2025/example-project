@@ -13,6 +13,7 @@ import (
 
 	"github.com/spbu-ds-practicum-2025/example-project/services/bank-service/internal/db"
 	"github.com/spbu-ds-practicum-2025/example-project/services/bank-service/internal/domain"
+	"github.com/spbu-ds-practicum-2025/example-project/services/bank-service/internal/events"
 	grpcserver "github.com/spbu-ds-practicum-2025/example-project/services/bank-service/internal/grpc"
 	pb "github.com/spbu-ds-practicum-2025/example-project/services/bank-service/proto/bank.v1"
 )
@@ -46,8 +47,35 @@ func main() {
 	transferRepo := db.NewTransferRepository(pool.Pool)
 	txManager := db.NewTransactionManager(pool.Pool)
 
+	// Create RabbitMQ publisher (optional)
+	rabbitURL := os.Getenv("RABBITMQ_URL")
+	if rabbitURL == "" {
+		rabbitURL = "amqp://guest:guest@localhost:5672/"
+		log.Printf("RABBITMQ_URL not set, using default: %s", rabbitURL)
+	}
+
+	// Exchange and routing key from asyncapi spec
+	exchange := "bank.operations"
+	routingKey := "bank.operations.transfer.completed"
+
+	var publisher domain.EventPublisher
+	rabbitPub, err := events.NewRabbitMQPublisher(rabbitURL, exchange, routingKey)
+	if err != nil {
+		// Best-effort: if RabbitMQ is not available, continue without publishing.
+		log.Printf("warning: failed to initialize RabbitMQ publisher: %v; continuing without event publishing", err)
+		rabbitPub = nil
+	} else {
+		publisher = rabbitPub
+		// ensure we close the publisher on shutdown
+		defer func() {
+			if err := rabbitPub.Close(); err != nil {
+				log.Printf("warning: failed to close rabbitmq publisher: %v", err)
+			}
+		}()
+	}
+
 	// Create domain service
-	transferService := domain.NewTransferService(accountRepo, transferRepo, txManager)
+	transferService := domain.NewTransferService(accountRepo, transferRepo, txManager, publisher)
 	log.Println("domain services initialized")
 
 	// Create gRPC server
