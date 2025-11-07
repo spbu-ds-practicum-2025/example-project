@@ -22,11 +22,11 @@ func NewPool(ctx context.Context, connString string) (*Pool, error) {
 	}
 
 	// Configure pool settings
-	config.MaxConns = 25         // Maximum number of connections
-	config.MinConns = 5          // Minimum number of connections to maintain
-	config.MaxConnLifetime = 0   // Unlimited connection lifetime
-	config.MaxConnIdleTime = 0   // Unlimited idle time
-	config.HealthCheckPeriod = 0 // Disable health checks (handled by pgx internally)
+	config.MaxConns = 25       // Maximum number of connections
+	config.MinConns = 5        // Minimum number of connections to maintain
+	config.MaxConnLifetime = 0 // Unlimited connection lifetime
+	config.MaxConnIdleTime = 0 // Unlimited idle time
+	// config.HealthCheckPeriod uses default (1 minute) if not set
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {

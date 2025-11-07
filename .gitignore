@@ -4,3 +4,5 @@
 **/*pb.go
 # Generated from AsyncAPI specifications
 services/bank-service/internal/events/
+**/bin
+**.log
