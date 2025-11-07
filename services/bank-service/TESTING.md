@@ -1,54 +1,56 @@
 # Bank Service Testing Guide
 
-This document describes the test suite for the Bank Service.
+Comprehensive test suite covering unit tests, integration tests, and end-to-end scenarios.
 
 ## Test Structure
 
-### Unit Tests (`server_test.go`)
-Fast tests that don't require external dependencies:
-- Request validation tests
-- Domain error mapping tests
+### Unit Tests (`internal/grpc/server_test.go`)
+Fast tests without external dependencies:
+- Request validation
+- Domain error mapping to gRPC codes
+- Input sanitization
 - gRPC status code verification
-- Input sanitization tests
 
-**Run with:**
+**Run**:
 ```bash
 go test -v -short ./...
 # or
 ./run-tests.sh unit
 ```
 
-### Integration Tests (`server_integration_test.go`)
-Full end-to-end tests using real dependencies:
-- PostgreSQL (via testcontainer)
-- RabbitMQ (via testcontainer)
+### Integration Tests (`internal/grpc/server_integration_test.go`)
+Full end-to-end tests with real infrastructure:
+- PostgreSQL (via testcontainers)
+- RabbitMQ (via testcontainers)
 - Complete gRPC flow
 - Event publishing verification
 - Idempotency validation
 
-**Requires:** Docker Desktop running
+**Requires**: Docker running
 
-**Run with:**
+**Run**:
 ```bash
 go test -v ./internal/grpc/... -run TestTransferMoneyIntegration -timeout 10m
 # or
 ./run-tests.sh integration
 ```
 
+---
+
 ## Integration Test Coverage
 
 ### TestTransferMoneyIntegration
 
-This comprehensive test covers:
+Comprehensive end-to-end test covering:
 
-#### 1. Infrastructure Setup
+#### Infrastructure Setup
 - ✅ Starts PostgreSQL 15 container
-- ✅ Starts RabbitMQ 3 (management) container
+- ✅ Starts RabbitMQ 3-management container
 - ✅ Runs database migrations programmatically
 - ✅ Creates test accounts with initial balances
 - ✅ Sets up RabbitMQ exchange and queues
 
-#### 2. Service Initialization
+#### Service Initialization
 - ✅ Creates connection pool
 - ✅ Initializes repositories (Account, Transfer)
 - ✅ Creates transaction manager
@@ -56,18 +58,18 @@ This comprehensive test covers:
 - ✅ Starts in-memory gRPC server (bufconn)
 - ✅ Creates gRPC client
 
-#### 3. Transfer Execution
+#### Transfer Execution
 - ✅ Executes TransferMoney via gRPC
 - ✅ Validates response status (SUCCESS)
-- ✅ Verifies operation ID is returned
+- ✅ Verifies operation ID returned
 
-#### 4. Database Verification
+#### Database Verification
 - ✅ Checks sender balance decreased (1000.00 → 899.50)
 - ✅ Checks recipient balance increased (500.00 → 600.50)
 - ✅ Verifies transfer record created
 - ✅ Confirms transaction atomicity
 
-#### 5. Event Publishing Verification
+#### Event Publishing Verification
 - ✅ Consumes event from RabbitMQ
 - ✅ Validates event structure (AsyncAPI spec)
 - ✅ Checks eventType: "transfer.completed"
@@ -79,57 +81,50 @@ This comprehensive test covers:
 - ✅ Validates routing key: `bank.operations.transfer.completed`
 - ✅ Confirms exchange: `bank.operations`
 
-#### 6. Idempotency Testing
+#### Idempotency Testing
 - ✅ Calls TransferMoney again with same idempotency key
 - ✅ Verifies same operation ID returned
 - ✅ Confirms balances unchanged (no duplicate transfer)
 
-#### 7. Cleanup
+#### Cleanup
 - ✅ Stops RabbitMQ consumer
 - ✅ Closes gRPC connections
 - ✅ Terminates containers
 
+---
+
 ## Test Accounts
 
-The integration test creates these accounts:
+Integration tests use these accounts:
 
 | Account ID | Initial Balance | Currency |
 |------------|----------------|----------|
 | `11111111-1111-1111-1111-111111111111` | 1000.00 | RUB |
 | `22222222-2222-2222-2222-222222222222` | 500.00 | RUB |
 
-Test transfer: 100.50 RUB from account 1 → account 2
+**Test transfer**: 100.50 RUB from account 1 → account 2
+
+---
 
 ## Running Tests
 
-### Prerequisites
-- Go 1.23+
-- Docker Desktop (for integration tests)
+### Using Test Runner Script
 
-### Quick Start
-
-**Run unit tests only (fast, no Docker):**
 ```bash
+# Unit tests (fast, no Docker)
 ./run-tests.sh unit
-```
 
-**Run integration tests (requires Docker):**
-```bash
-# Make sure Docker Desktop is running
+# Integration tests (requires Docker)
 ./run-tests.sh integration
-```
 
-**Run all tests:**
-```bash
+# All tests
 ./run-tests.sh all
-```
 
-**Generate coverage report:**
-```bash
+# Coverage report
 ./run-tests.sh coverage
 ```
 
-### Manual Commands
+### Direct Go Commands
 
 ```bash
 # Unit tests
@@ -145,6 +140,8 @@ go test -v ./... -timeout 10m
 go test -v -short -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
+
+---
 
 ## CI/CD Integration
 
@@ -178,22 +175,21 @@ jobs:
         working-directory: services/bank-service
 ```
 
-## Test Data
+---
 
-### Successful Transfer Scenario
+## Test Data Examples
+
+### Transfer Request
 ```json
 {
   "sender_id": "11111111-1111-1111-1111-111111111111",
   "recipient_id": "22222222-2222-2222-2222-222222222222",
-  "amount": {
-    "value": "100.50",
-    "currency_code": "RUB"
-  },
+  "amount": {"value": "100.50", "currency_code": "RUB"},
   "idempotency_key": "<uuid>"
 }
 ```
 
-### Expected Event
+### Expected RabbitMQ Event
 ```json
 {
   "eventId": "<uuid>",
@@ -213,55 +209,61 @@ jobs:
 }
 ```
 
+---
+
 ## Troubleshooting
 
-### Docker Issues
+### Docker Not Running
+```
+error during connect: docker daemon is not running
+```
+**Solution**: Start Docker Desktop and wait for it to initialize.
 
-**Error:** `error during connect: docker daemon is not running`
-- **Solution:** Start Docker Desktop and wait for it to initialize
+### Container Startup Timeout
+**Solution**: Increase timeout: `-timeout 15m`  
+May occur on first run (downloading images: postgres:15, rabbitmq:3-management)
 
-**Error:** Container startup timeout
-- **Solution:** Increase timeout: `-timeout 15m`
-- May occur on first run (downloading images)
-
-### Test Failures
-
-**RabbitMQ event not received**
+### Event Not Received
 - Check consumer started before transfer
 - Verify exchange and routing key match
 - Increase wait timeout if needed
 
-**Database connection failed**
+### Database Connection Failed
 - Ensure PostgreSQL container started
 - Check migrations ran successfully
 - Verify connection string format
 
-**Balance mismatch**
+### Balance Mismatch
 - Check test account initial balances
 - Verify transfer amount calculation
 - Ensure no concurrent transfers
 
-## Future Enhancements
+---
 
-- [ ] Add stress test with concurrent transfers
-- [ ] Test insufficient funds scenario
-- [ ] Test currency mismatch handling
-- [ ] Add RabbitMQ connection failure test
-- [ ] Test database deadlock scenarios
-- [ ] Add performance benchmarks
-- [ ] Test GetAccount endpoint
-- [ ] Test TopUp endpoint (when implemented)
+## Future Test Coverage
 
-## Metrics
+Additional scenarios to implement:
 
-Current test coverage areas:
+- [ ] Insufficient funds scenario
+- [ ] Currency mismatch handling
+- [ ] Concurrent transfer stress test
+- [ ] RabbitMQ publisher failure handling
+- [ ] Database transaction rollback scenarios
+- [ ] GetAccount endpoint edge cases
+- [ ] TopUp endpoint (when implemented)
+- [ ] Performance benchmarks
+
+---
+
+## Current Coverage
+
 - ✅ Request validation
 - ✅ gRPC server implementation
-- ✅ Database operations (via integration test)
-- ✅ Event publishing (via integration test)
-- ✅ Idempotency (via integration test)
-- ✅ Transaction handling (via integration test)
-- ⚠️ Domain logic (covered indirectly, needs unit tests)
-- ⚠️ Repository implementations (covered indirectly, needs unit tests)
+- ✅ Database operations
+- ✅ Event publishing
+- ✅ Idempotency
+- ✅ Transaction handling
+- ⚠️ Domain logic (needs dedicated unit tests)
+- ⚠️ Repository implementations (needs dedicated unit tests)
 - ❌ Error scenarios (insufficient funds, etc.)
 - ❌ Concurrent access patterns
