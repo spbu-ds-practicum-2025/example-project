@@ -142,6 +142,14 @@ echo ""
 echo -e "${GREEN}RabbitMQ is ready ✓${NC}"
 echo ""
 
+# Setup RabbitMQ queue for testing
+echo -e "${YELLOW}Setting up RabbitMQ queue for event monitoring...${NC}"
+docker exec dev-rabbitmq rabbitmqadmin declare exchange name=bank.operations type=topic durable=true 2>/dev/null || true
+docker exec dev-rabbitmq rabbitmqadmin declare queue name=test-events-queue durable=false auto_delete=false 2>/dev/null || true
+docker exec dev-rabbitmq rabbitmqadmin declare binding source=bank.operations destination=test-events-queue routing_key="bank.operations.#" 2>/dev/null || true
+echo -e "${GREEN}Queue 'test-events-queue' created and bound to 'bank.operations' exchange ✓${NC}"
+echo ""
+
 # Run Bank Service migrations
 echo -e "${YELLOW}Running Bank Service migrations...${NC}"
 cd "${BANK_SERVICE_DIR}"
@@ -220,8 +228,13 @@ echo -e "${CYAN}Service Endpoints:${NC}"
 echo -e "  API Gateway (HTTP):     http://localhost:${API_GATEWAY_PORT}"
 echo -e "  Bank Service (gRPC):    localhost:${BANK_SERVICE_PORT}"
 echo -e "  RabbitMQ (AMQP):        localhost:${RABBITMQ_PORT}"
-echo -e "  RabbitMQ Management:    http://localhost:${RABBITMQ_MGMT_PORT}"
+echo -e "${CYAN}RabbitMQ Management:    http://localhost:${RABBITMQ_MGMT_PORT}"
 echo -e "  PostgreSQL:             localhost:${DB_PORT}"
+echo ""
+echo -e "${CYAN}RabbitMQ Queue:${NC}"
+echo -e "  Queue Name:             test-events-queue"
+echo -e "  Exchange:               bank.operations (topic)"
+echo -e "  Routing Key Pattern:    bank.operations.#"
 echo ""
 echo -e "${CYAN}Process IDs:${NC}"
 echo -e "  Bank Service:           ${BANK_PID}"
@@ -248,6 +261,12 @@ echo -e '  }'"'"
 echo ""
 echo -e "${CYAN}# Check account balance${NC}"
 echo -e 'curl http://localhost:8080/accounts/11111111-1111-1111-1111-111111111111'
+echo ""
+echo -e "${CYAN}# Monitor RabbitMQ events (in another terminal)${NC}"
+echo -e "docker exec dev-rabbitmq rabbitmqadmin get queue=test-events-queue ackmode=ack_requeue_false"
+echo ""
+echo -e "${CYAN}# Or view queue stats${NC}"
+echo -e "docker exec dev-rabbitmq rabbitmqadmin list queues name messages"
 echo ""
 echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}"
 echo ""
