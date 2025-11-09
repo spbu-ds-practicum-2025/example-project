@@ -5,7 +5,7 @@ set -euo pipefail
 # Requires: quicktype (recommended) - install with: npm install -g quicktype
 #           OR asyncapi CLI - install with: npm install -g @asyncapi/cli
 
-ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/../../.." && pwd)
 SPEC_FILE="$ROOT_DIR/common/analytics-service-kafka-spec/asyncapi.yaml"
 SCHEMA_FILE="$ROOT_DIR/common/analytics-service-kafka-spec/schemas/transfer_event.json"
 BANK_SERVICE_DIR="$ROOT_DIR/bank-service"

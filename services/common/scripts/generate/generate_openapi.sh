@@ -4,7 +4,7 @@ set -euo pipefail
 # Generate Go models and server stubs from OpenAPI specification for API Gateway
 # Requires: oapi-codegen (install with: go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest)
 
-ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+ROOT_DIR=$(cd "$(dirname "$0")/../../.." && pwd)
 SPEC_FILE="$ROOT_DIR/common/wallet-api/openapi.yaml"
 API_GATEWAY_DIR="$ROOT_DIR/api-gateway"
 MODELS_OUT_DIR="$API_GATEWAY_DIR/internal/models"
