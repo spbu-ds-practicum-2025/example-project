@@ -1,0 +1,192 @@
+asyncapi: 3.0.0
+info:
+  title: Bank Operations Event Stream
+  version: 1.0.0
+  description: |
+    Event stream for bank operations from the Bank Service to Analytics Service.
+    This specification defines the events published to RabbitMQ when 
+    money transfers are executed.
+  contact:
+    name: Electronic Wallet Team
+    email: team@wallet.example.com
+
+servers:
+  development:
+    host: localhost:5672
+    protocol: amqp
+    description: Local RabbitMQ server for development
+  
+  production:
+    host: rabbitmq.wallet.example.com:5672
+    protocol: amqp
+    description: Production RabbitMQ server
+
+defaultContentType: application/json
+
+channels:
+  transferCompleted:
+    address: bank.operations.transfer.completed
+    messages:
+      transferCompletedEvent:
+        $ref: '#/components/messages/TransferCompletedEvent'
+    description: |
+      Channel for transfer completion events.
+      Published when a money transfer between accounts is successfully completed.
+    bindings:
+      amqp:
+        is: routingKey
+        exchange:
+          name: bank.operations
+          type: topic
+          durable: true
+          autoDelete: false
+          vhost: /
+
+operations:
+  onTransferCompleted:
+    action: receive
+    channel:
+      $ref: '#/channels/transferCompleted'
+    summary: Receive transfer completion events
+    description: |
+      Analytics Service subscribes to this operation to receive notifications
+      about completed money transfers for analysis and reporting.
+    bindings:
+      amqp:
+        ack: true
+        bindingVersion: 0.3.0
+        cc:
+          - bank.operations.transfer.completed
+    messages:
+      - $ref: '#/channels/transferCompleted/messages/transferCompletedEvent'
+
+components:
+  messages:
+    TransferCompletedEvent:
+      name: TransferCompletedEvent
+      title: Transfer Completed Event
+      summary: Event emitted when a money transfer is successfully completed
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/TransferCompletedEventPayload'
+      examples:
+        - name: Successful RUB Transfer
+          summary: Example of a successful transfer between two accounts
+          payload:
+            eventId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+            eventType: "transfer.completed"
+            eventTimestamp: "2025-11-08T14:30:00.000Z"
+            operationId: "987e6543-e21b-34d3-c456-426614174999"
+            senderId: "123e4567-e89b-12d3-a456-426614174000"
+            recipientId: "987e6543-e21b-34d3-c456-426614174999"
+            amount:
+              value: "150.50"
+              currencyCode: "RUB"
+            idempotencyKey: "550e8400-e29b-41d4-a716-446655440000"
+            status: "SUCCESS"
+            timestamp: "2025-11-08T14:30:00.000Z"
+
+  schemas:
+    TransferCompletedEventPayload:
+      type: object
+      description: |
+        Payload for transfer completion events.
+        Contains all information about a completed money transfer between accounts.
+      required:
+        - eventId
+        - eventType
+        - eventTimestamp
+        - operationId
+        - senderId
+        - recipientId
+        - amount
+        - idempotencyKey
+        - status
+        - timestamp
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Unique identifier for this event instance
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        
+        eventType:
+          type: string
+          const: "transfer.completed"
+          description: Type of the event
+          example: "transfer.completed"
+        
+        eventTimestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the event was created (ISO 8601)
+          example: "2025-11-08T14:30:00.000Z"
+        
+        operationId:
+          type: string
+          format: uuid
+          description: Unique identifier of the transfer operation
+          example: "987e6543-e21b-34d3-c456-426614174999"
+        
+        senderId:
+          type: string
+          format: uuid
+          description: Unique identifier of the sender's account
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        
+        recipientId:
+          type: string
+          format: uuid
+          description: Unique identifier of the recipient's account
+          example: "987e6543-e21b-34d3-c456-426614174999"
+        
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: The monetary amount transferred
+        
+        idempotencyKey:
+          type: string
+          format: uuid
+          description: Idempotency key used for the transfer operation
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        
+        status:
+          type: string
+          enum:
+            - SUCCESS
+          description: Status of the transfer operation
+          example: "SUCCESS"
+        
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the transfer was executed (ISO 8601)
+          example: "2025-11-08T14:30:00.000Z"
+        
+        message:
+          type: string
+          description: Optional human-readable message about the transfer
+          example: "Transfer completed successfully"
+
+    Amount:
+      type: object
+      description: |
+        Represents a monetary value with its currency.
+        All monetary operations in the system use this schema.
+      required:
+        - value
+        - currencyCode
+      properties:
+        value:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: |
+            The numeric value of the amount as a string to preserve precision.
+            Format: decimal string with exactly 2 decimal places (e.g., "100.00", "50.50")
+          example: "150.50"
+        
+        currencyCode:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          description: ISO 4217 currency code (e.g., "RUB" for Russian Ruble)
+          example: "RUB"

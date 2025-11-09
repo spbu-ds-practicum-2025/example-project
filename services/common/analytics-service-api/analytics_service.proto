@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package analytics.v1;
+
+option go_package = "analytics.v1";
+
+// AnalyticsService provides account operations analytics for the wallet system.
+service AnalyticsService {
+    // Returns all operations for a specific account (top-ups and transfers), with optional pagination.
+    rpc ListAccountOperations(ListAccountOperationsRequest) returns (ListAccountOperationsResponse);
+}
+
+message ListAccountOperationsRequest {
+    string account_id = 1; // required
+    int32 limit = 2; // optional, max number of operations to return
+    string after_id = 3; // optional, return operations after this operation id
+}
+
+message ListAccountOperationsResponse {
+    repeated Operation content = 1;
+    string after_id = 2; // id of the last operation in the list
+}
+
+message Operation {
+    string id = 1;
+    OperationType type = 2;
+    string timestamp = 3; // ISO 8601
+    Amount amount = 4;
+    oneof details {
+        TopupOperation topup = 5;
+        TransferOperation transfer = 6;
+    }
+}
+
+enum OperationType {
+    OPERATION_TYPE_UNSPECIFIED = 0;
+    TOPUP = 1;
+    TRANSFER = 2;
+}
+
+message TopupOperation {
+    // No extra fields for top-up
+}
+
+message TransferOperation {
+    string sender_id = 1;
+    string recipient_id = 2;
+}
+
+message Amount {
+    string value = 1; // decimal as string
+    string currency_code = 2; // ISO 4217
+}
