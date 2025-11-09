@@ -14,6 +14,7 @@ import (
 func main() {
 	// Get configuration from environment variables
 	bankServiceAddr := getEnv("BANK_SERVICE_ADDR", "localhost:50051")
+	analyticsServiceAddr := getEnv("ANALYTICS_SERVICE_ADDR", "localhost:50052")
 	port := getEnv("PORT", "8080")
 
 	// Create bank service client
@@ -23,15 +24,23 @@ func main() {
 	}
 	defer bankClient.Close()
 
+	// Create analytics service client
+	analyticsClient, err := clients.NewAnalyticsClient(analyticsServiceAddr)
+	if err != nil {
+		log.Fatalf("Failed to create analytics client: %v", err)
+	}
+	defer analyticsClient.Close()
+
 	// Create handler
-	handler := handlers.NewHandler(bankClient)
+	handler := handlers.NewHandler(bankClient, analyticsClient)
 
 	// Create HTTP server with generated router
 	httpHandler := server.Handler(handler)
 
 	// Start server
 	addr := ":" + port
-	log.Printf("API Gateway starting on %s, connecting to Bank Service at %s", addr, bankServiceAddr)
+	log.Printf("API Gateway starting on %s, connecting to Bank Service at %s and Analytics Service at %s",
+		addr, bankServiceAddr, analyticsServiceAddr)
 
 	httpServer := &http.Server{
 		Addr:    addr,
