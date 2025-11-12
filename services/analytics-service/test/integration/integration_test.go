@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/spbu-ds-practicum-2025/example-project/services/analytics-service/internal/config"
 	"github.com/spbu-ds-practicum-2025/example-project/services/analytics-service/internal/db"
@@ -35,102 +36,42 @@ func TestFullIntegration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	ctx := context.Background()
+	// ===== GIVEN: Test infrastructure is set up =====
+	t.Log("===== GIVEN: Setting up test infrastructure =====")
 
-	// Start ClickHouse container
-	clickhouseContainer, clickhouseHost, clickhousePassword, err := startClickHouseContainer(ctx)
+	tc, err := setupTestContext(t)
 	if err != nil {
-		t.Fatalf("Failed to start ClickHouse container: %v", err)
+		t.Fatalf("Failed to setup test context: %v", err)
 	}
-	defer clickhouseContainer.Terminate(ctx)
+	defer tc.cleanup()
 
-	t.Logf("ClickHouse started at: %s", clickhouseHost)
+	// Generate random UUIDs for test data (according to AsyncAPI spec)
+	testSenderID := uuid.New().String()
+	testRecipientID := uuid.New().String()
+	testOperationID := uuid.New().String()
+	testEventID := uuid.New().String()
+	testIdempotencyKey := uuid.New().String()
 
-	// Start RabbitMQ container
-	rabbitmqContainer, rabbitmqURL, err := startRabbitMQContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start RabbitMQ container: %v", err)
-	}
-	defer rabbitmqContainer.Terminate(ctx)
+	t.Logf("Test data prepared: senderID=%s, recipientID=%s, operationID=%s",
+		testSenderID, testRecipientID, testOperationID)
 
-	t.Logf("RabbitMQ started at: %s", rabbitmqURL)
+	// ===== WHEN: Transfer event is published to RabbitMQ =====
+	t.Log("===== WHEN: Publishing transfer event to RabbitMQ =====")
 
-	// Initialize ClickHouse client
-	clickhouseCfg := config.ClickHouseConfig{
-		Host:     clickhouseHost,
-		Database: "default",
-		User:     "default",
-		Password: clickhousePassword,
-	}
-
-	clickhouseClient, err := db.NewClickHouseClient(clickhouseCfg)
-	if err != nil {
-		t.Fatalf("Failed to connect to ClickHouse: %v", err)
-	}
-	defer clickhouseClient.Close()
-
-	// Create schema
-	if err := createSchema(ctx, clickhouseClient); err != nil {
-		t.Fatalf("Failed to create schema: %v", err)
-	}
-
-	// Initialize repository
-	repo := repository.NewOperationRepository(clickhouseClient)
-
-	// Start gRPC server
-	grpcPort := "50053"
-	grpcServer, err := startGRPCServer(t, grpcPort, repo)
-	if err != nil {
-		t.Fatalf("Failed to start gRPC server: %v", err)
-	}
-	if grpcServer != nil {
-		defer grpcServer.Stop()
-	}
-
-	t.Logf("gRPC server started on port %s", grpcPort)
-
-	// Start RabbitMQ consumer
-	rabbitmqCfg := config.RabbitMQConfig{
-		URL:        rabbitmqURL,
-		Queue:      testQueue,
-		Exchange:   testExchange,
-		RoutingKey: testRoutingKey,
-	}
-
-	consumer, err := messaging.NewRabbitMQConsumer(rabbitmqCfg, repo)
-	if err != nil {
-		t.Fatalf("Failed to create RabbitMQ consumer: %v", err)
-	}
-	defer consumer.Close()
-
-	consumerCtx, cancelConsumer := context.WithCancel(ctx)
-	defer cancelConsumer()
-
-	// Start consumer in background
-	go func() {
-		if err := consumer.Start(consumerCtx); err != nil && err != context.Canceled {
-			t.Logf("Consumer error: %v", err)
-		}
-	}()
-
-	// Wait for consumer to initialize
-	time.Sleep(2 * time.Second)
-
-	// Publish test events to RabbitMQ
-	testAccountID := "acc-123"
-	testOperationID := "op-456"
-
-	if err := publishTransferEvent(rabbitmqURL, testAccountID, testOperationID); err != nil {
+	if err := publishTransferEvent(tc.rabbitmqURL, testEventID, testOperationID, testSenderID, testRecipientID, testIdempotencyKey); err != nil {
 		t.Fatalf("Failed to publish test event: %v", err)
 	}
-
-	t.Log("Published transfer event to RabbitMQ")
+	t.Log("Transfer event published successfully")
 
 	// Wait for event to be processed
 	time.Sleep(3 * time.Second)
 
-	// Verify operations in ClickHouse
-	operations, err := repo.ListAccountOperations(ctx, testAccountID, 10, "")
+	// ===== THEN: Verify the complete flow =====
+	t.Log("===== THEN: Verifying the complete flow =====")
+
+	// 1. Verify operation is stored in ClickHouse
+	t.Log("Step 1: Verifying operation is stored in ClickHouse")
+	operations, err := tc.repo.ListAccountOperations(tc.ctx, testSenderID, 10, "")
 	if err != nil {
 		t.Fatalf("Failed to query operations from ClickHouse: %v", err)
 	}
@@ -141,18 +82,17 @@ func TestFullIntegration(t *testing.T) {
 
 	t.Logf("Found %d operations in ClickHouse", len(operations))
 
-	// Verify operation details
 	found := false
 	for _, op := range operations {
 		if op.ID == testOperationID {
 			found = true
-			if op.AccountID != testAccountID {
-				t.Errorf("Expected account ID %s, got %s", testAccountID, op.AccountID)
+			if op.AccountID != testSenderID {
+				t.Errorf("Expected account ID %s, got %s", testSenderID, op.AccountID)
 			}
 			if op.OperationType != models.OperationTypeTransfer {
 				t.Errorf("Expected operation type TRANSFER, got %s", op.OperationType)
 			}
-			t.Logf("Verified operation: %+v", op)
+			t.Logf("✓ Operation verified in ClickHouse: %+v", op)
 		}
 	}
 
@@ -160,12 +100,13 @@ func TestFullIntegration(t *testing.T) {
 		t.Errorf("Operation %s not found in ClickHouse", testOperationID)
 	}
 
-	// Verify operations via gRPC API
-	grpcClient, grpcConn := createGRPCClient(t, grpcPort)
+	// 2. Verify operation is accessible via gRPC API
+	t.Log("Step 2: Verifying operation is accessible via gRPC API")
+	grpcClient, grpcConn := createGRPCClient(t, tc.grpcPort)
 	defer grpcConn.Close()
 
-	grpcResp, err := grpcClient.ListAccountOperations(ctx, &pb.ListAccountOperationsRequest{
-		AccountId: testAccountID,
+	grpcResp, err := grpcClient.ListAccountOperations(tc.ctx, &pb.ListAccountOperationsRequest{
+		AccountId: testSenderID,
 		Limit:     10,
 	})
 
@@ -179,7 +120,6 @@ func TestFullIntegration(t *testing.T) {
 
 	t.Logf("Retrieved %d operations via gRPC API", len(grpcResp.Content))
 
-	// Verify gRPC response
 	grpcFound := false
 	for _, op := range grpcResp.Content {
 		if op.Id == testOperationID {
@@ -193,7 +133,7 @@ func TestFullIntegration(t *testing.T) {
 			if op.Amount.CurrencyCode != "RUB" {
 				t.Errorf("Expected currency RUB, got %s", op.Amount.CurrencyCode)
 			}
-			t.Logf("Verified gRPC operation: %+v", op)
+			t.Logf("✓ Operation verified via gRPC: %+v", op)
 		}
 	}
 
@@ -201,7 +141,128 @@ func TestFullIntegration(t *testing.T) {
 		t.Errorf("Operation %s not found in gRPC response", testOperationID)
 	}
 
-	t.Log("✓ Integration test passed: RabbitMQ → ClickHouse → gRPC API")
+	t.Log("===== ✓ Integration test PASSED: RabbitMQ → ClickHouse → gRPC API =====")
+}
+
+// testContext holds all the components needed for integration testing
+type testContext struct {
+	ctx                 context.Context
+	clickhouseContainer *clickhouse.ClickHouseContainer
+	rabbitmqContainer   testcontainers.Container
+	clickhouseClient    *db.ClickHouseClient
+	repo                *repository.OperationRepository
+	grpcServer          *grpc.Server
+	consumer            *messaging.RabbitMQConsumer
+	cancelConsumer      context.CancelFunc
+	rabbitmqURL         string
+	grpcPort            string
+}
+
+// setupTestContext initializes all required infrastructure for integration testing
+func setupTestContext(t *testing.T) (*testContext, error) {
+	ctx := context.Background()
+	tc := &testContext{
+		ctx: ctx,
+	}
+
+	// Start ClickHouse container
+	clickhouseContainer, clickhouseHost, clickhousePassword, err := startClickHouseContainer(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start ClickHouse: %w", err)
+	}
+	tc.clickhouseContainer = clickhouseContainer
+	t.Logf("ClickHouse started at: %s", clickhouseHost)
+
+	// Start RabbitMQ container
+	rabbitmqContainer, rabbitmqURL, err := startRabbitMQContainer(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start RabbitMQ: %w", err)
+	}
+	tc.rabbitmqContainer = rabbitmqContainer
+	tc.rabbitmqURL = rabbitmqURL
+	t.Logf("RabbitMQ started at: %s", rabbitmqURL)
+
+	// Initialize ClickHouse client
+	clickhouseCfg := config.ClickHouseConfig{
+		Host:     clickhouseHost,
+		Database: "default",
+		User:     "default",
+		Password: clickhousePassword,
+	}
+
+	clickhouseClient, err := db.NewClickHouseClient(clickhouseCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
+	}
+	tc.clickhouseClient = clickhouseClient
+
+	// Create schema
+	if err := createSchema(ctx, clickhouseClient); err != nil {
+		return nil, fmt.Errorf("failed to create schema: %w", err)
+	}
+
+	// Initialize repository
+	tc.repo = repository.NewOperationRepository(clickhouseClient)
+
+	// Start gRPC server on a random available port
+	grpcServer, grpcPort, err := startGRPCServer(t, tc.repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start gRPC server: %w", err)
+	}
+	tc.grpcServer = grpcServer
+	tc.grpcPort = grpcPort
+	t.Logf("gRPC server started on port %s", tc.grpcPort)
+
+	// Start RabbitMQ consumer
+	rabbitmqCfg := config.RabbitMQConfig{
+		URL:        rabbitmqURL,
+		Queue:      testQueue,
+		Exchange:   testExchange,
+		RoutingKey: testRoutingKey,
+	}
+
+	consumer, err := messaging.NewRabbitMQConsumer(rabbitmqCfg, tc.repo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create RabbitMQ consumer: %w", err)
+	}
+	tc.consumer = consumer
+
+	// Start consumer in background
+	consumerCtx, cancelConsumer := context.WithCancel(ctx)
+	tc.cancelConsumer = cancelConsumer
+
+	go func() {
+		if err := consumer.Start(consumerCtx); err != nil && err != context.Canceled {
+			t.Logf("Consumer error: %v", err)
+		}
+	}()
+
+	// Wait for consumer to initialize
+	time.Sleep(2 * time.Second)
+
+	return tc, nil
+}
+
+// cleanup releases all resources used by the test context
+func (tc *testContext) cleanup() {
+	if tc.cancelConsumer != nil {
+		tc.cancelConsumer()
+	}
+	if tc.consumer != nil {
+		tc.consumer.Close()
+	}
+	if tc.grpcServer != nil {
+		tc.grpcServer.Stop()
+	}
+	if tc.clickhouseClient != nil {
+		tc.clickhouseClient.Close()
+	}
+	if tc.rabbitmqContainer != nil {
+		tc.rabbitmqContainer.Terminate(tc.ctx)
+	}
+	if tc.clickhouseContainer != nil {
+		tc.clickhouseContainer.Terminate(tc.ctx)
+	}
 }
 
 func startClickHouseContainer(ctx context.Context) (*clickhouse.ClickHouseContainer, string, string, error) {
@@ -261,15 +322,20 @@ func createSchema(ctx context.Context, client *db.ClickHouseClient) error {
 	return client.Conn().Exec(ctx, query)
 }
 
-func startGRPCServer(t *testing.T, port string, repo *repository.OperationRepository) (*grpc.Server, error) {
+func startGRPCServer(t *testing.T, repo *repository.OperationRepository) (*grpc.Server, string, error) {
 	grpcServer := grpcserver.NewGRPCServer()
 	analyticsService := service.NewAnalyticsServiceWithRepo(repo)
 	grpcserver.RegisterAnalyticsServer(grpcServer, analyticsService)
 
-	listener, err := net.Listen("tcp", ":"+port)
+	// Listen on port 0 to get a random available port
+	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		return nil, "", fmt.Errorf("failed to create listener: %w", err)
 	}
+
+	// Extract the actual port that was assigned
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	portStr := fmt.Sprintf("%d", actualPort)
 
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
@@ -280,10 +346,10 @@ func startGRPCServer(t *testing.T, port string, repo *repository.OperationReposi
 	// Give server time to start
 	time.Sleep(500 * time.Millisecond)
 
-	return grpcServer, nil
+	return grpcServer, portStr, nil
 }
 
-func publishTransferEvent(rabbitmqURL, accountID, operationID string) error {
+func publishTransferEvent(rabbitmqURL, eventID, operationID, senderID, recipientID, idempotencyKey string) error {
 	conn, err := amqp.Dial(rabbitmqURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -296,20 +362,22 @@ func publishTransferEvent(rabbitmqURL, accountID, operationID string) error {
 	}
 	defer ch.Close()
 
+	// Create event according to AsyncAPI specification
+	now := time.Now().Format(time.RFC3339)
 	event := models.TransferCompletedEvent{
-		EventID:        "evt-123",
+		EventID:        eventID,
 		EventType:      "transfer.completed",
-		EventTimestamp: time.Now().Format(time.RFC3339),
+		EventTimestamp: now,
 		OperationID:    operationID,
-		SenderID:       accountID,
-		RecipientID:    "acc-789",
+		SenderID:       senderID,
+		RecipientID:    recipientID,
 		Amount: models.Amount{
 			Value:        "150.50",
 			CurrencyCode: "RUB",
 		},
-		IdempotencyKey: "idem-123",
+		IdempotencyKey: idempotencyKey,
 		Status:         "SUCCESS",
-		Timestamp:      time.Now().Format(time.RFC3339),
+		Timestamp:      now,
 	}
 
 	body, err := json.Marshal(event)
