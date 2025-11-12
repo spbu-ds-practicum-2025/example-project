@@ -25,4 +25,9 @@ protoc -I="$PROTO_ROOT" \
   --go_out="$OUT_DIR/api-gateway/proto" --go-grpc_out="$OUT_DIR/api-gateway/proto" \
   "$PROTO_ROOT/analytics-service-api/analytics_service.proto"
 
+echo "Generating Go stubs for analytics-service-api inside analytics-service..."
+protoc -I="$PROTO_ROOT" \
+  --go_out="$OUT_DIR/analytics-service/proto" --go-grpc_out="$OUT_DIR/analytics-service/proto" \
+  "$PROTO_ROOT/analytics-service-api/analytics_service.proto"
+
 exit 0
