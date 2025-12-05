@@ -35,7 +35,7 @@
    {
      "recipientId": "{account-B}",
      "amount": {
-       "value": "250.00",
+       "value": "50.00",
        "currencyCode": "RUB"
      }
    }
@@ -49,8 +49,8 @@
     "operationId": "<uuid>"
   }
   ```
-- Баланс счета А уменьшился на 250.00 RUB и составляет 950.00 RUB
-- Баланс счета Б увеличился на 250.00 RUB и составляет 550.00 RUB
+- Баланс счета А уменьшился на 50.00 RUB и составляет 950.00 RUB
+- Баланс счета Б увеличился на 50.00 RUB и составляет 550.00 RUB
 - Операция отображается в истории обоих счетов
 - Время выполнения операции не превышает 2 секунд
 
@@ -73,7 +73,7 @@
    {
      "recipientId": "{account-B}",
      "amount": {
-       "value": "2000.00",
+       "value": "50.00",
        "currencyCode": "RUB"
      }
    }
@@ -85,8 +85,8 @@
   ```json
   {
     "id": "<uuid>",
-    "code": "400_BAD_REQUEST",
-    "description": "Недостаточно средств на счете"
+    "code": "FAILED_PRECONDITION",
+    "description": "insufficient funds"
   }
   ```
 - Баланс счета А остается 1000.00 RUB
@@ -125,8 +125,8 @@
   ```json
   {
     "id": "<uuid>",
-    "code": "404_NOT_FOUND",
-    "description": "Счет получателя не найден"
+    "code": "NOT_FOUND",
+    "description": "account not found"
   }
   ```
 - Баланс счета А остается неизменным: 1000.00 RUB
@@ -245,13 +245,13 @@
   {
     "content": [
       {
-        "operationId": "<uuid>",
-        "type": "TRANSFER",
-        "amount": {...},
-        "timestamp": "2025-11-12T10:30:00Z",
-        "status": "SUCCESS",
-        "senderId": "...",
-        "recipientId": "..."
+        "amount": {
+            "currencyCode": "RUB",
+            "value": "50.00"
+        },
+        "id": "7599be0c-5df5-4051-986c-ca02014eb502",
+        "timestamp": "2025-12-05T22:44:32Z",
+        "type": "Transfer"
       },
       ...
     ],
