@@ -72,9 +72,40 @@ func (h *Handler) TransferBetweenAccounts(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GetAccount is not implemented yet
+// GetAccount retrieves account details from the bank service
 func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request, accountId models.AccountIdParam) {
-	w.WriteHeader(http.StatusNotImplemented)
+	// Build gRPC request
+	grpcReq := &bank_v1.GetAccountRequest{
+		AccountId: accountId.String(),
+	}
+
+	// Call bank service
+	grpcResp, err := h.bankClient.GetAccount(r.Context(), grpcReq)
+	if err != nil {
+		handleGrpcError(w, err)
+		return
+	}
+
+	// Parse account ID from response
+	respAccountID, err := uuid.Parse(grpcResp.AccountId)
+	if err != nil {
+		sendErrorResponse(w, http.StatusInternalServerError, "INVALID_RESPONSE", "Invalid account ID in response", err.Error())
+		return
+	}
+
+	// Build response
+	resp := models.Account{
+		AccountId: respAccountID,
+		Balance: models.Amount{
+			Value:        grpcResp.Balance.Value,
+			CurrencyCode: grpcResp.Balance.CurrencyCode,
+		},
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // GetAccountOperations retrieves the list of operations for a given account

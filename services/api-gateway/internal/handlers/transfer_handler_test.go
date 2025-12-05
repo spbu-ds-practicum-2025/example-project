@@ -29,6 +29,7 @@ const bufSize = 1024 * 1024
 type mockBankService struct {
 	bank_v1.UnimplementedBankServiceServer
 	transferMoneyFunc func(context.Context, *bank_v1.TransferMoneyRequest) (*bank_v1.TransferMoneyResponse, error)
+	getAccountFunc    func(context.Context, *bank_v1.GetAccountRequest) (*bank_v1.GetAccountResponse, error)
 }
 
 func (m *mockBankService) TransferMoney(ctx context.Context, req *bank_v1.TransferMoneyRequest) (*bank_v1.TransferMoneyResponse, error) {
@@ -40,6 +41,20 @@ func (m *mockBankService) TransferMoney(ctx context.Context, req *bank_v1.Transf
 		Status:      bank_v1.TransferStatus_TRANSFER_STATUS_SUCCESS,
 		Message:     "Transfer successful",
 		Timestamp:   time.Now().Format(time.RFC3339),
+	}, nil
+}
+
+func (m *mockBankService) GetAccount(ctx context.Context, req *bank_v1.GetAccountRequest) (*bank_v1.GetAccountResponse, error) {
+	if m.getAccountFunc != nil {
+		return m.getAccountFunc(ctx, req)
+	}
+	return &bank_v1.GetAccountResponse{
+		AccountId: req.AccountId,
+		Balance: &bank_v1.Amount{
+			Value:        "0.00",
+			CurrencyCode: "RUB",
+		},
+		Timestamp: time.Now().Format(time.RFC3339),
 	}, nil
 }
 
