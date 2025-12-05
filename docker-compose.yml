@@ -63,6 +63,39 @@ services:
     networks:
       - wallet-network
 
+  # RabbitMQ Initialization
+  rabbitmq-init:
+    image: rabbitmq:3.13-management-alpine
+    container_name: wallet-rabbitmq-init
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - wallet-network
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo 'Waiting for RabbitMQ management plugin to be ready...'
+        max_attempts=30
+        attempt=0
+        until rabbitmqadmin --host=rabbitmq --username=guest --password=guest list exchanges > /dev/null 2>&1; do
+          attempt=$$((attempt + 1))
+          if [ $$attempt -ge $$max_attempts ]; then
+            echo "Failed to connect to RabbitMQ after $$max_attempts attempts"
+            exit 1
+          fi
+          echo "Waiting for RabbitMQ management API (attempt $$attempt/$$max_attempts)..."
+          sleep 2
+        done
+        echo 'RabbitMQ management API is ready'
+        echo 'Configuring RabbitMQ...'
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare exchange name=bank.operations type=topic durable=true
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare queue name=analytics.transfer.completed durable=true auto_delete=false
+        rabbitmqadmin --host=rabbitmq --username=guest --password=guest declare binding source=bank.operations destination=analytics.transfer.completed routing_key=bank.operations.transfer.completed
+        echo 'RabbitMQ configuration completed successfully'
+    restart: "no"
+
   # Bank Service Migrations
   bank-migrations:
     image: postgres:17-alpine
@@ -96,19 +129,18 @@ services:
     build:
       context: ./services/bank-service
       dockerfile: Dockerfile
-    container_name: wallet-bank-service
     environment:
       DATABASE_URL: "postgres://bank_service:bank_service@postgres:5432/bank_db?sslmode=disable"
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
       PORT: "50051"
-    ports:
-      - "50051:50051"
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
       bank-migrations:
+        condition: service_completed_successfully
+      rabbitmq-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:50051/health", "||", "exit", "1"]
@@ -119,6 +151,8 @@ services:
     networks:
       - wallet-network
     restart: unless-stopped
+    deploy:
+      replicas: 3
 
   # Analytics Service Migrations
   analytics-migrations:
@@ -175,6 +209,8 @@ services:
       rabbitmq:
         condition: service_healthy
       analytics-migrations:
+        condition: service_completed_successfully
+      rabbitmq-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:50052/health", "||", "exit", "1"]

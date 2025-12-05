@@ -23,11 +23,28 @@ type RabbitMQConsumer struct {
 
 // NewRabbitMQConsumer creates a new RabbitMQ consumer
 func NewRabbitMQConsumer(cfg config.RabbitMQConfig, repo *repository.OperationRepository) (*RabbitMQConsumer, error) {
-	// Connect to RabbitMQ
-	conn, err := amqp.Dial(cfg.URL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+	var conn *amqp.Connection
+	var err error
+
+	// Retry connection to RabbitMQ with exponential backoff
+	maxRetries := 10
+	for i := 0; i < maxRetries; i++ {
+		conn, err = amqp.Dial(cfg.URL)
+		if err == nil {
+			break
+		}
+
+		waitTime := time.Duration(i+1) * time.Second
+		log.Printf("Failed to connect to RabbitMQ (attempt %d/%d): %v. Retrying in %v...",
+			i+1, maxRetries, err, waitTime)
+		time.Sleep(waitTime)
 	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to RabbitMQ after %d attempts: %w", maxRetries, err)
+	}
+
+	log.Println("Successfully connected to RabbitMQ")
 
 	// Open channel
 	channel, err := conn.Channel()
