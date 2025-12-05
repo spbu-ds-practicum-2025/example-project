@@ -1,0 +1,1 @@
+TRUNCATE TABLE analytics_db.operations;
