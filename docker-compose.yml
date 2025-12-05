@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Bank Service
+  postgres:
+    image: postgres:17-alpine
+    container_name: wallet-postgres
+    environment:
+      POSTGRES_DB: bank_db
+      POSTGRES_USER: bank_service
+      POSTGRES_PASSWORD: bank_service
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank_service -d bank_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wallet-network
+
+  # ClickHouse Database for Analytics Service
+  clickhouse:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: wallet-clickhouse
+    environment:
+      CLICKHOUSE_DB: analytics_db
+      CLICKHOUSE_USER: analytics_service
+      CLICKHOUSE_PASSWORD: analytics_service
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wallet-network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: wallet-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wallet-network
+
+  # Bank Service
+  bank-service:
+    build:
+      context: ./services/bank-service
+      dockerfile: Dockerfile
+    container_name: wallet-bank-service
+    environment:
+      DATABASE_URL: "postgres://bank_service:bank_service@postgres:5432/bank_db?sslmode=disable"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      PORT: "50051"
+    ports:
+      - "50051:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:50051/health", "||", "exit", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - wallet-network
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: wallet-analytics-service
+    environment:
+      CLICKHOUSE_URL: "clickhouse://analytics_service:analytics_service@clickhouse:9000/analytics_db"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      PORT: "50052"
+    ports:
+      - "50052:50052"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:50052/health", "||", "exit", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - wallet-network
+    restart: unless-stopped
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: wallet-api-gateway
+    environment:
+      BANK_SERVICE_ADDR: "bank-service:50051"
+      ANALYTICS_SERVICE_ADDR: "analytics-service:50052"
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - bank-service
+      - analytics-service
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health", "||", "exit", "1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - wallet-network
+    restart: unless-stopped
+
+networks:
+  wallet-network:
+    driver: bridge
+    name: wallet-network
+
+volumes:
+  postgres_data:
+    name: wallet-postgres-data
+  clickhouse_data:
+    name: wallet-clickhouse-data
+  rabbitmq_data:
+    name: wallet-rabbitmq-data
