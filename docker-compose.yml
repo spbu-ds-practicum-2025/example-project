@@ -35,11 +35,20 @@ services:
       - "9000:9000"  # Native interface
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    cap_add:
+      - SYS_NICE
+      - NET_ADMIN
+      - IPC_LOCK
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
-      interval: 5s
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
     networks:
       - wallet-network
 
@@ -170,6 +179,32 @@ services:
       - -c
       - |
         echo 'Running analytics-service migrations...'
+        echo 'Waiting for ClickHouse DNS to be available...'
+        max_dns_attempts=30
+        dns_attempt=0
+        until getent hosts clickhouse > /dev/null 2>&1; do
+          dns_attempt=$$((dns_attempt + 1))
+          if [ $$dns_attempt -ge $$max_dns_attempts ]; then
+            echo "Failed to resolve ClickHouse DNS after $$max_dns_attempts attempts"
+            exit 1
+          fi
+          echo "Waiting for ClickHouse DNS (attempt $$dns_attempt/$$max_dns_attempts)..."
+          sleep 1
+        done
+        echo 'ClickHouse DNS resolved, waiting for service to be ready...'
+        max_attempts=60
+        attempt=0
+        until clickhouse-client --host=clickhouse --port=9000 --user=analytics_service --password=analytics_service --query="SELECT 1" > /dev/null 2>&1; do
+          attempt=$$((attempt + 1))
+          if [ $$attempt -ge $$max_attempts ]; then
+            echo "Failed to connect to ClickHouse after $$attempt attempts"
+            clickhouse-client --host=clickhouse --port=9000 --user=analytics_service --password=analytics_service --query="SELECT 1"
+            exit 1
+          fi
+          echo "Waiting for ClickHouse (attempt $$attempt/$$max_attempts)..."
+          sleep 2
+        done
+        echo 'ClickHouse is ready, applying migrations...'
         for file in /migrations/*.up.sql; do
           if [ -f "$$file" ]; then
             echo "Applying migration: $$(basename $$file)"
@@ -179,7 +214,7 @@ services:
               --database=analytics_db \
               --user=analytics_service \
               --password=analytics_service \
-              --queries-file="$$file" || exit 1
+              --multiquery < "$$file" || exit 1
           fi
         done
         echo 'Analytics migrations completed successfully'
