@@ -139,12 +139,17 @@ func (c *RabbitMQConsumer) Start(ctx context.Context) error {
 				return fmt.Errorf("message channel closed")
 			}
 
+			log.Printf("[RabbitMQ-Consumer] Received message: deliveryTag=%d, routingKey=%s, size=%d bytes",
+				msg.DeliveryTag, msg.RoutingKey, len(msg.Body))
+
 			// Handle message
 			if err := c.handleMessage(ctx, msg); err != nil {
-				log.Printf("Error handling message: %v", err)
+				log.Printf("[RabbitMQ-Consumer] Error handling message (deliveryTag=%d): %v. Sending Nack with requeue.",
+					msg.DeliveryTag, err)
 				// Negative acknowledgement with requeue on error
 				msg.Nack(false, true)
 			} else {
+				log.Printf("[RabbitMQ-Consumer] Message processed successfully (deliveryTag=%d). Sending Ack.", msg.DeliveryTag)
 				// Acknowledge successful processing
 				msg.Ack(false)
 			}
@@ -154,23 +159,28 @@ func (c *RabbitMQConsumer) Start(ctx context.Context) error {
 
 // handleMessage processes a single transfer event message
 func (c *RabbitMQConsumer) handleMessage(ctx context.Context, msg amqp.Delivery) error {
+	log.Printf("[RabbitMQ-Consumer] Processing message: size=%d bytes", len(msg.Body))
+
 	// Deserialize event from JSON
 	var event models.TransferCompletedEvent
 	if err := json.Unmarshal(msg.Body, &event); err != nil {
+		log.Printf("[RabbitMQ-Consumer] Failed to unmarshal event: %v", err)
 		return fmt.Errorf("failed to unmarshal event: %w", err)
 	}
 
-	log.Printf("Received transfer event: eventId=%s, operationId=%s, sender=%s, recipient=%s",
-		event.EventID, event.OperationID, event.SenderID, event.RecipientID)
+	log.Printf("[RabbitMQ-Consumer] Received transfer event: eventId=%s, operationId=%s, sender=%s, recipient=%s, amount=%s %s, status=%s",
+		event.EventID, event.OperationID, event.SenderID, event.RecipientID, event.Amount.Value, event.Amount.CurrencyCode, event.Status)
 
 	// Validate event
 	if err := c.validateEvent(&event); err != nil {
+		log.Printf("[RabbitMQ-Consumer] Event validation failed: %v", err)
 		return fmt.Errorf("invalid event: %w", err)
 	}
 
 	// Parse timestamp from ISO 8601
 	timestamp, err := time.Parse(time.RFC3339, event.Timestamp)
 	if err != nil {
+		log.Printf("[RabbitMQ-Consumer] Failed to parse timestamp '%s': %v", event.Timestamp, err)
 		return fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
@@ -202,17 +212,24 @@ func (c *RabbitMQConsumer) handleMessage(ctx context.Context, msg amqp.Delivery)
 		RecipientID: event.RecipientID,
 	}
 
+	log.Printf("[RabbitMQ-Consumer] Inserting sender operation: accountId=%s, operationId=%s", event.SenderID, event.OperationID)
+
 	// Insert sender operation
 	if err := c.repo.InsertOperation(ctx, senderOperation); err != nil {
+		log.Printf("[RabbitMQ-Consumer] Failed to insert sender operation: %v", err)
 		return fmt.Errorf("failed to insert sender operation: %w", err)
 	}
 
+	log.Printf("[RabbitMQ-Consumer] Inserting recipient operation: accountId=%s, operationId=%s", event.RecipientID, event.OperationID)
+
 	// Insert recipient operation
 	if err := c.repo.InsertOperation(ctx, recipientOperation); err != nil {
+		log.Printf("[RabbitMQ-Consumer] Failed to insert recipient operation: %v", err)
 		return fmt.Errorf("failed to insert recipient operation: %w", err)
 	}
 
-	log.Printf("Successfully processed transfer event: operationId=%s", event.OperationID)
+	log.Printf("[RabbitMQ-Consumer] Successfully processed and stored transfer event: operationId=%s, eventId=%s, inserted 2 operations",
+		event.OperationID, event.EventID)
 
 	return nil
 }

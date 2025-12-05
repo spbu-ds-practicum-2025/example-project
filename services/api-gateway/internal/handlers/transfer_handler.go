@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -30,9 +31,12 @@ func NewHandler(bankClient *clients.BankClient, analyticsClient *clients.Analyti
 
 // TransferBetweenAccounts handles money transfer requests
 func (h *Handler) TransferBetweenAccounts(w http.ResponseWriter, r *http.Request, accountId models.AccountIdParam, params models.TransferBetweenAccountsParams) {
+	log.Printf("[API-Gateway] Starting TransferBetweenAccounts: accountId=%s, idempotencyKey=%s", accountId.String(), params.XIdempotencyKey.String())
+
 	// Parse request body
 	var transferReq models.TransferRequest
 	if err := json.NewDecoder(r.Body).Decode(&transferReq); err != nil {
+		log.Printf("[API-Gateway] TransferBetweenAccounts failed to parse request body: %v", err)
 		sendErrorResponse(w, http.StatusBadRequest, "INVALID_REQUEST", "Failed to parse request body", err.Error())
 		return
 	}
@@ -48,9 +52,13 @@ func (h *Handler) TransferBetweenAccounts(w http.ResponseWriter, r *http.Request
 		IdempotencyKey: params.XIdempotencyKey.String(),
 	}
 
+	log.Printf("[API-Gateway] Calling Bank Service TransferMoney: sender=%s, recipient=%s, amount=%s %s",
+		accountId.String(), transferReq.RecipientId.String(), transferReq.Amount.Value, transferReq.Amount.CurrencyCode)
+
 	// Call bank service
 	grpcResp, err := h.bankClient.TransferMoney(r.Context(), grpcReq)
 	if err != nil {
+		log.Printf("[API-Gateway] Bank Service TransferMoney failed: %v", err)
 		handleGrpcError(w, err)
 		return
 	}
@@ -66,6 +74,8 @@ func (h *Handler) TransferBetweenAccounts(w http.ResponseWriter, r *http.Request
 		OperationId: operationID,
 	}
 
+	log.Printf("[API-Gateway] TransferBetweenAccounts completed successfully: operationId=%s", operationID.String())
+
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -74,14 +84,19 @@ func (h *Handler) TransferBetweenAccounts(w http.ResponseWriter, r *http.Request
 
 // GetAccount retrieves account details from the bank service
 func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request, accountId models.AccountIdParam) {
+	log.Printf("[API-Gateway] Starting GetAccount: accountId=%s", accountId.String())
+
 	// Build gRPC request
 	grpcReq := &bank_v1.GetAccountRequest{
 		AccountId: accountId.String(),
 	}
 
+	log.Printf("[API-Gateway] Calling Bank Service GetAccount: accountId=%s", accountId.String())
+
 	// Call bank service
 	grpcResp, err := h.bankClient.GetAccount(r.Context(), grpcReq)
 	if err != nil {
+		log.Printf("[API-Gateway] Bank Service GetAccount failed: %v", err)
 		handleGrpcError(w, err)
 		return
 	}
@@ -102,6 +117,9 @@ func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request, accountId m
 		},
 	}
 
+	log.Printf("[API-Gateway] GetAccount completed successfully: accountId=%s, balance=%s %s",
+		respAccountID.String(), grpcResp.Balance.Value, grpcResp.Balance.CurrencyCode)
+
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -110,6 +128,9 @@ func (h *Handler) GetAccount(w http.ResponseWriter, r *http.Request, accountId m
 
 // GetAccountOperations retrieves the list of operations for a given account
 func (h *Handler) GetAccountOperations(w http.ResponseWriter, r *http.Request, accountId models.AccountIdParam, params models.GetAccountOperationsParams) {
+	log.Printf("[API-Gateway] Starting GetAccountOperations: accountId=%s, limit=%v, afterId=%v",
+		accountId.String(), params.Limit, params.AfterId)
+
 	// Build gRPC request
 	grpcReq := &analytics_v1.ListAccountOperationsRequest{
 		AccountId: accountId.String(),
@@ -125,9 +146,12 @@ func (h *Handler) GetAccountOperations(w http.ResponseWriter, r *http.Request, a
 		grpcReq.AfterId = params.AfterId.String()
 	}
 
+	log.Printf("[API-Gateway] Calling Analytics Service ListAccountOperations: accountId=%s", accountId.String())
+
 	// Call analytics service
 	grpcResp, err := h.analyticsClient.ListAccountOperations(r.Context(), grpcReq)
 	if err != nil {
+		log.Printf("[API-Gateway] Analytics Service ListAccountOperations failed: %v", err)
 		handleGrpcError(w, err)
 		return
 	}
@@ -189,6 +213,9 @@ func (h *Handler) GetAccountOperations(w http.ResponseWriter, r *http.Request, a
 		}
 		resp.AfterId = &afterID
 	}
+
+	log.Printf("[API-Gateway] GetAccountOperations completed successfully: accountId=%s, returned %d operations",
+		accountId.String(), len(operations))
 
 	// Send response
 	w.Header().Set("Content-Type", "application/json")

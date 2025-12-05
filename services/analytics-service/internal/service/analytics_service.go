@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/spbu-ds-practicum-2025/example-project/services/analytics-service/internal/models"
 	"github.com/spbu-ds-practicum-2025/example-project/services/analytics-service/internal/repository"
@@ -42,8 +43,12 @@ func (s *AnalyticsService) ListAccountOperations(
 	ctx context.Context,
 	req *pb.ListAccountOperationsRequest,
 ) (*pb.ListAccountOperationsResponse, error) {
+	log.Printf("[Analytics-Service] Starting ListAccountOperations: accountId=%s, limit=%d, afterId=%s",
+		req.AccountId, req.Limit, req.AfterId)
+
 	// Validate request
 	if err := s.validateListRequest(req); err != nil {
+		log.Printf("[Analytics-Service] ListAccountOperations validation failed: %v", err)
 		return nil, err
 	}
 
@@ -55,6 +60,7 @@ func (s *AnalyticsService) ListAccountOperations(
 		req.AfterId,
 	)
 	if err != nil {
+		log.Printf("[Analytics-Service] ListAccountOperations query failed: %v", err)
 		return nil, status.Errorf(codes.Internal, "failed to list operations: %v", err)
 	}
 
@@ -71,6 +77,9 @@ func (s *AnalyticsService) ListAccountOperations(
 		pbOperations = append(pbOperations, pbOp)
 		lastID = op.ID
 	}
+
+	log.Printf("[Analytics-Service] ListAccountOperations completed successfully: accountId=%s, returned %d operations",
+		req.AccountId, len(operations))
 
 	return &pb.ListAccountOperationsResponse{
 		Content: pbOperations,

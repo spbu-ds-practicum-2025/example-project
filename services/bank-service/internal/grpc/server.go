@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,8 +31,12 @@ func NewBankServiceServer(transferService *domain.TransferService) *BankServiceS
 // TransferMoney executes a money transfer between two accounts atomically.
 // This operation is idempotent when called with the same idempotency key.
 func (s *BankServiceServer) TransferMoney(ctx context.Context, req *pb.TransferMoneyRequest) (*pb.TransferMoneyResponse, error) {
+	log.Printf("[Bank-Service] Starting TransferMoney: sender=%s, recipient=%s, amount=%s %s, idempotencyKey=%s",
+		req.SenderId, req.RecipientId, req.Amount.Value, req.Amount.CurrencyCode, req.IdempotencyKey)
+
 	// Validate request
 	if err := validateTransferMoneyRequest(req); err != nil {
+		log.Printf("[Bank-Service] TransferMoney validation failed: %v", err)
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -62,6 +67,7 @@ func (s *BankServiceServer) TransferMoney(ctx context.Context, req *pb.TransferM
 	)
 
 	if err != nil {
+		log.Printf("[Bank-Service] TransferMoney failed: %v", err)
 		// Map domain errors to gRPC status codes
 		return nil, mapDomainErrorToGRPC(err)
 	}
@@ -79,11 +85,16 @@ func (s *BankServiceServer) TransferMoney(ctx context.Context, req *pb.TransferM
 		response.Timestamp = formatTimestamp(*transfer.CompletedAt)
 	}
 
+	log.Printf("[Bank-Service] TransferMoney completed successfully: operationId=%s, status=%s",
+		transfer.ID.String(), transfer.Status)
+
 	return response, nil
 }
 
 // GetAccount retrieves complete account information including balance.
 func (s *BankServiceServer) GetAccount(ctx context.Context, req *pb.GetAccountRequest) (*pb.GetAccountResponse, error) {
+	log.Printf("[Bank-Service] Starting GetAccount: accountId=%s", req.AccountId)
+
 	// Validate request
 	if req.AccountId == "" {
 		return nil, status.Error(codes.InvalidArgument, "account_id is required")
@@ -98,6 +109,7 @@ func (s *BankServiceServer) GetAccount(ctx context.Context, req *pb.GetAccountRe
 	// Get account from service
 	account, err := s.transferService.GetAccountBalance(ctx, accountID)
 	if err != nil {
+		log.Printf("[Bank-Service] GetAccount failed: %v", err)
 		return nil, mapDomainErrorToGRPC(err)
 	}
 
@@ -110,6 +122,9 @@ func (s *BankServiceServer) GetAccount(ctx context.Context, req *pb.GetAccountRe
 		},
 		Timestamp: formatTimestamp(time.Now()),
 	}
+
+	log.Printf("[Bank-Service] GetAccount completed successfully: accountId=%s, balance=%s %s",
+		account.ID.String(), account.Balance.Value, account.Balance.CurrencyCode)
 
 	return response, nil
 }
