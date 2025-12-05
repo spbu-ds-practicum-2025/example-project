@@ -10,6 +10,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger to automatically update updated_at on accounts table
+DROP TRIGGER IF EXISTS trigger_accounts_updated_at ON accounts;
 CREATE TRIGGER trigger_accounts_updated_at
     BEFORE UPDATE ON accounts
     FOR EACH ROW

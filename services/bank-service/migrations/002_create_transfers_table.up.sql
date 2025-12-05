@@ -22,15 +22,15 @@ CREATE TABLE IF NOT EXISTS transfers (
 );
 
 -- Create indexes for efficient queries
-CREATE INDEX idx_transfers_sender_id ON transfers(sender_id);
-CREATE INDEX idx_transfers_recipient_id ON transfers(recipient_id);
-CREATE INDEX idx_transfers_idempotency_key ON transfers(idempotency_key);
-CREATE INDEX idx_transfers_created_at ON transfers(created_at DESC);
-CREATE INDEX idx_transfers_status ON transfers(status);
+CREATE INDEX IF NOT EXISTS idx_transfers_sender_id ON transfers(sender_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_recipient_id ON transfers(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_transfers_idempotency_key ON transfers(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_transfers_created_at ON transfers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transfers_status ON transfers(status);
 
 -- Composite index for account transfer history queries
-CREATE INDEX idx_transfers_account_created ON transfers(sender_id, created_at DESC);
-CREATE INDEX idx_transfers_recipient_created ON transfers(recipient_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transfers_account_created ON transfers(sender_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transfers_recipient_created ON transfers(recipient_id, created_at DESC);
 
 -- Add comments to table and columns
 COMMENT ON TABLE transfers IS 'Money transfer operations between accounts';

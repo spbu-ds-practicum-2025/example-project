@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 -- Create index on updated_at for efficient queries
-CREATE INDEX idx_accounts_updated_at ON accounts(updated_at);
+CREATE INDEX IF NOT EXISTS idx_accounts_updated_at ON accounts(updated_at);
 
 -- Add comment to table
 COMMENT ON TABLE accounts IS 'Bank accounts with balance information';

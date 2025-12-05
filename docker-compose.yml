@@ -63,6 +63,34 @@ services:
     networks:
       - wallet-network
 
+  # Bank Service Migrations
+  bank-migrations:
+    image: postgres:17-alpine
+    container_name: wallet-bank-migrations
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: bank_db
+      PGUSER: bank_service
+      PGPASSWORD: bank_service
+    volumes:
+      - ./services/bank-service/migrations:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wallet-network
+    command: >
+      sh -c "
+        echo 'Running bank-service migrations...' &&
+        for file in /migrations/*.up.sql; do
+          echo \"Applying migration: $$(basename $$file)\" &&
+          psql -v ON_ERROR_STOP=1 -f \"$$file\" || exit 1;
+        done &&
+        echo 'Bank migrations completed successfully'
+      "
+    restart: "no"
+
   # Bank Service
   bank-service:
     build:
@@ -80,6 +108,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      bank-migrations:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:50051/health", "||", "exit", "1"]
       interval: 10s
@@ -90,6 +120,37 @@ services:
       - wallet-network
     restart: unless-stopped
 
+  # Analytics Service Migrations
+  analytics-migrations:
+    image: clickhouse/clickhouse-server:24-alpine
+    container_name: wallet-analytics-migrations
+    volumes:
+      - ./services/analytics-service/migrations:/migrations:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - wallet-network
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo 'Running analytics-service migrations...'
+        for file in /migrations/*.up.sql; do
+          if [ -f "$$file" ]; then
+            echo "Applying migration: $$(basename $$file)"
+            clickhouse-client \
+              --host=clickhouse \
+              --port=9000 \
+              --database=analytics_db \
+              --user=analytics_service \
+              --password=analytics_service \
+              --queries-file="$$file" || exit 1
+          fi
+        done
+        echo 'Analytics migrations completed successfully'
+    restart: "no"
+
   # Analytics Service
   analytics-service:
     build:
@@ -97,9 +158,15 @@ services:
       dockerfile: Dockerfile
     container_name: wallet-analytics-service
     environment:
-      CLICKHOUSE_URL: "clickhouse://analytics_service:analytics_service@clickhouse:9000/analytics_db"
+      CLICKHOUSE_HOST: "clickhouse:9000"
+      CLICKHOUSE_DB: "analytics_db"
+      CLICKHOUSE_USER: "analytics_service"
+      CLICKHOUSE_PASSWORD: "analytics_service"
       RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
-      PORT: "50052"
+      RABBITMQ_EXCHANGE: "bank.operations"
+      RABBITMQ_QUEUE: "analytics.transfer.completed"
+      RABBITMQ_ROUTING_KEY: "bank.operations.transfer.completed"
+      GRPC_PORT: "50052"
     ports:
       - "50052:50052"
     depends_on:
@@ -107,6 +174,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      analytics-migrations:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:50052/health", "||", "exit", "1"]
       interval: 10s
